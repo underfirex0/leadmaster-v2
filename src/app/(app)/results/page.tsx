@@ -181,7 +181,7 @@ function ResultsInner() {
   const router = useRouter()
   const supabase = createClient()
 
-  const rubSlugs = (searchParams.get('activites') ?? '').split(',').filter(Boolean) ?? '').split(',').filter(Boolean)
+  const rubSlugs = (searchParams.get('activites') ?? '').split(',').filter(Boolean)
   const cities      = (searchParams.get('cities') ?? '').split(',').filter(Boolean)
   const name        = searchParams.get('name') ?? ''
 
