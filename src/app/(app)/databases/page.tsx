@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Search, Clock, ArrowRight, Database, MapPin, Filter, Trash2, Loader2 } from 'lucide-react'
+import { Search, Clock, ArrowRight, Database, MapPin, Filter, Loader2 } from 'lucide-react'
 
 type Query = {
   id: string

@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CompanyPreview, Company } from '@/types'
-import { createClient } from '@/lib/supabase/client'
 
 // ── Company Card ─────────────────────────────────────────────
 type CardState = 'locked' | 'unlocking' | 'unlocked'
@@ -185,7 +184,6 @@ function CompanyCard({
 // ── Results Page Inner ───────────────────────────────────────
 function ResultsInner() {
   const searchParams = useSearchParams()
-  const supabase = createClient()
 
   const rubSlugs = (searchParams.get('activites') ?? '').split(',').filter(Boolean)
   const cities      = (searchParams.get('cities') ?? '').split(',').filter(Boolean)
@@ -203,12 +201,11 @@ function ResultsInner() {
   const [balance, setBalance]       = useState<number | null>(null)
   const [toast, setToast]           = useState<{ msg: string; type: 'success'|'error' } | null>(null)
 
-  // Fetch balance
+  // Fetch credit balance
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
-      fetch('/api/me/balance').then(r => r.json()).then(d => setBalance(d.balance))
-    })
+    fetch('/api/me/balance')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setBalance(d.balance) })
   }, [])
 
   const fetchResults = useCallback(async (p: number) => {

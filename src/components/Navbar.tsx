@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Search, LayoutDashboard, Wallet, LogOut, ChevronDown,
   Users2, Crown, Target, Settings, Database, Upload,
-  Menu, X, Unlock, Lock
+  Menu, X, Unlock
 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'

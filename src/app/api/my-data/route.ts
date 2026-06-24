@@ -17,12 +17,15 @@ export async function GET(request: NextRequest) {
     const sector  = searchParams.get('sector') ?? ''
     const offset  = (page - 1) * limit
 
-    // Get user's unlocked company IDs with pagination
+    // Fetch ALL unlock records for this user (needed to build the company IN clause).
+    // Supabase defaults to 1000 rows — override with a large limit so users with
+    // many unlocks don't silently lose data. count: 'exact' gives us the true total.
     const { data: unlocks, count: totalCount } = await supabaseAdmin
       .from('company_unlocks')
       .select('company_id, unlocked_at', { count: 'exact' })
       .eq('user_id', user.id)
       .order('unlocked_at', { ascending: false })
+      .limit(50000)
 
     if (!unlocks?.length) {
       return NextResponse.json({ companies: [], totalCount: 0, page, hasMore: false })

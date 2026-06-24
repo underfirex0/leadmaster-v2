@@ -57,7 +57,9 @@ export async function GET(request: NextRequest) {
         business: {
           id:             raw.id,
           name:           raw.name,
-          sector:         raw.primary_sector,
+          sector:         Array.isArray(raw.activities) && (raw.activities as string[]).length > 0
+                            ? (raw.activities as string[])[0]
+                            : null,
           city:           raw.city,
           country:        null,
           phone:          p<string>(raw.phone_1),
