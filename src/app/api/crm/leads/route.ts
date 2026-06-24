@@ -4,9 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { CRMStatus } from '@/types'
 
-// Fields that are FREE — always visible (search-sourced leads only)
-const FREE_FIELDS = new Set(['name','sector','city','region','country','legal_form','forme_juridique','status'])
-
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -28,57 +25,61 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!leads?.length) return NextResponse.json({ leads: [], counts: {} })
 
-    // Split by source — search-sourced leads go through the existing
-    // business-join + credit-unlock masking pipeline, completely unchanged.
-    // Import-sourced leads already belong to the client (they uploaded the
-    // data themselves) so everything is shown immediately, no masking.
-    const searchLeads = leads.filter(l => l.source !== 'import' && l.business_id)
+    // Split by source — search-sourced leads go through the company-join +
+    // credit-unlock masking pipeline. Import-sourced leads are shown as-is.
+    const searchLeads = leads.filter(l => l.source !== 'import' && l.company_id)
     const importLeads = leads.filter(l => l.source === 'import')
 
-    // ── Search-sourced leads: existing masking logic, untouched ──
-    const bizIds = [...new Set(searchLeads.map(l => l.business_id))]
-    const { data: businesses } = bizIds.length
-      ? await supabaseAdmin.from('businesses').select('*').in('id', bizIds)
+    // ── Search-sourced leads ──────────────────────────────────────────────
+    const bizIds = [...new Set(searchLeads.map(l => l.company_id).filter(Boolean))] as string[]
+
+    const { data: companies } = bizIds.length
+      ? await supabaseAdmin.from('companies').select('*').in('id', bizIds)
       : { data: [] as Record<string, unknown>[] }
 
-    const { data: unlockEvents } = bizIds.length
-      ? await supabaseAdmin.from('unlock_events').select('business_id, field')
-          .eq('user_id', user.id).in('business_id', bizIds)
-      : { data: [] as { business_id: string; field: string }[] }
+    const { data: unlockData } = bizIds.length
+      ? await supabaseAdmin.from('company_unlocks')
+          .select('company_id').eq('user_id', user.id).in('company_id', bizIds)
+      : { data: [] as { company_id: string }[] }
 
-    const unlockMap: Record<string, Record<string, string | null>> = {}
-    for (const evt of unlockEvents ?? []) {
-      if (!unlockMap[evt.business_id]) unlockMap[evt.business_id] = {}
-      const biz = businesses?.find(b => b.id === evt.business_id)
-      if (biz) {
-        const val = (biz as Record<string, unknown>)[evt.field]
-        unlockMap[evt.business_id][evt.field] = (val as string) ?? null
-      }
-    }
+    const unlockedSet = new Set((unlockData ?? []).map(u => u.company_id))
 
     const enrichedSearch = searchLeads.map(lead => {
-      const biz = businesses?.find(b => b.id === lead.business_id)
-      const unlocked = unlockMap[lead.business_id] ?? {}
+      const raw = (companies?.find(b => b.id === lead.company_id) ?? null) as Record<string, unknown> | null
+      const isUnlocked = unlockedSet.has(lead.company_id as string)
 
-      if (!biz) return { ...lead, business: null }
+      if (!raw) return { ...lead, business: null }
 
-      const raw = biz as Record<string, unknown>
-      const allFields = Object.keys(raw)
-      const maskedFields: Record<string, unknown> = {}
-
-      for (const field of allFields) {
-        if (FREE_FIELDS.has(field) || field === 'id' || field === 'created_at') {
-          maskedFields[field] = raw[field]
-        } else if (field in unlocked) {
-          maskedFields[field] = unlocked[field]
-        } else {
-          maskedFields[field] = null
-        }
-      }
+      const p = <T>(v: unknown) => (isUnlocked ? (v as T) ?? null : null)
 
       return {
         ...lead,
-        business: { ...maskedFields, unlocked, _unlocked_fields: Object.keys(unlocked) },
+        business: {
+          id:             raw.id,
+          name:           raw.name,
+          sector:         raw.primary_sector,
+          city:           raw.city,
+          country:        null,
+          phone:          p<string>(raw.phone_1),
+          phone_2:        p<string>(raw.phone_2),
+          email:          p<string>(raw.email),
+          website:        p<string>(raw.website),
+          address:        p<string>(raw.address_raw),
+          dirigeant_name: p<string>(raw.director),
+          dirigeant_phone: null,
+          dirigeant_email: null,
+          effectif_label:  null,
+          revenue_label:   null,
+          ice:            p<string>(raw.ice),
+          rc:             p<string>(raw.rc),
+          capital:        p<string>(raw.capital),
+          facebook:       p<string>(raw.facebook),
+          instagram:      p<string>(raw.instagram),
+          linkedin:       p<string>(raw.linkedin),
+          youtube:        p<string>(raw.youtube),
+          unlocked: {},
+          _unlocked: isUnlocked,
+        },
       }
     })
 
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
         revenue_label:   null,
         legal_form:      null,
         unlocked: {},
-        _unlocked_fields: [],
+        _unlocked: true,
       },
     }))
 
@@ -134,13 +135,13 @@ export async function POST(request: NextRequest) {
     if (!businessIds?.length) return NextResponse.json({ error: 'businessIds requis' }, { status: 400 })
 
     const records = businessIds.map((bid: string) => ({
-      user_id: user.id, business_id: bid, source: 'search',
+      user_id: user.id, company_id: bid, source: 'search',
       query_id: queryId || null, status: 'to_call',
     }))
 
     const { data, error } = await supabaseAdmin
       .from('crm_leads')
-      .upsert(records, { onConflict: 'user_id,business_id', ignoreDuplicates: true })
+      .upsert(records, { onConflict: 'user_id,company_id', ignoreDuplicates: true })
       .select()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

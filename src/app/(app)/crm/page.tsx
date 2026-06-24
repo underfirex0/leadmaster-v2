@@ -5,14 +5,13 @@ import {
   CheckCircle, XCircle, Clock, Star, Archive,
   ChevronDown, ChevronUp, Search, StickyNote,
   Loader2, Trash2, RefreshCw, UserRound, Mail,
-  Globe, MapPin, Users, TrendingUp, Building2,
-  CalendarClock, AlertTriangle, RotateCcw, Lock,
-  Flag, Calendar, Bell, AlertCircle, Zap, Activity,
+  Globe, MapPin, Building2,
+  CalendarClock, Lock,
+  Flag, Calendar, Bell, AlertCircle, Activity,
   Factory, Upload as UploadIcon, Tag
 } from 'lucide-react'
 import { cn, formatDate, formatDateShort } from '@/lib/utils'
 import { useToast } from '@/components/Toast'
-import { FIELD_COSTS } from '@/lib/constants'
 import type { CRMLead, CRMStatus, CRMPriority, CallOutcome } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -105,7 +104,7 @@ export default function CRMPage() {
   const [callbackDate, setCallbackDate]     = useState('')
   const [callbackNote, setCallbackNote]     = useState('')
   const [pendingStatus, setPendingStatus]   = useState<string | null>(null)
-  const [unlocking, setUnlocking]           = useState<Record<string, string>>({})
+  const [unlocking, setUnlocking]           = useState<Set<string>>(new Set())
   const [sourceFilter, setSourceFilter]     = useState<'all' | 'search' | 'import'>('all')
   const [countryFilter, setCountryFilter]   = useState<string>('all')
   const [manufacturerFilter, setManufacturerFilter] = useState<'all' | 'yes' | 'no'>('all')
@@ -276,24 +275,46 @@ export default function CRMPage() {
     }
   }
 
-  async function unlockField(bizId: string, field: string) {
-    const key = `${bizId}:${field}`
-    setUnlocking(u => ({ ...u, [key]: 'loading' }))
+  async function unlockCompany(bizId: string) {
+    if (!bizId) return
+    setUnlocking(u => new Set([...u, bizId]))
     try {
       const res = await fetch('/api/unlock', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessId: bizId, field }),
+        body: JSON.stringify({ company_id: bizId }),
       })
       const d = await res.json()
-      if (!res.ok) { toast.error(d.error || 'Erreur'); setUnlocking(u => { const n={...u}; delete n[key]; return n }); return }
-      setUnlocking(u => ({ ...u, [key]: d.value ?? '' }))
+      if (!res.ok) { toast.error(d.error || 'Erreur'); setUnlocking(u => { const n = new Set(u); n.delete(bizId); return n }); return }
+
+      const company = (d.companies ?? [])[0] as Record<string, unknown> | undefined
       setLeads(prev => prev.map(lead => {
         if (!lead.business || (lead.business as Record<string,unknown>).id !== bizId) return lead
         const biz = lead.business as Record<string, unknown>
-        return { ...lead, business: { ...biz, [field]: d.value, unlocked: { ...(biz.unlocked as Record<string,unknown> ?? {}), [field]: d.value } } as typeof lead.business }
+        return {
+          ...lead,
+          business: {
+            ...biz,
+            phone:          company?.phone_1 ?? null,
+            phone_2:        company?.phone_2 ?? null,
+            email:          company?.email ?? null,
+            website:        company?.website ?? null,
+            address:        company?.address_raw ?? null,
+            dirigeant_name: company?.director ?? null,
+            ice:            company?.ice ?? null,
+            rc:             company?.rc ?? null,
+            capital:        company?.capital ?? null,
+            facebook:       company?.facebook ?? null,
+            instagram:      company?.instagram ?? null,
+            linkedin:       company?.linkedin ?? null,
+            youtube:        company?.youtube ?? null,
+            _unlocked:      true,
+          } as typeof lead.business,
+        }
       }))
       if (!d.alreadyUnlocked) toast.success(`Débloqué · −${d.creditsSpent} cr`)
-    } catch { toast.error('Erreur réseau'); setUnlocking(u => { const n={...u}; delete n[key]; return n }) }
+      else toast.success('Déjà débloqué')
+    } catch { toast.error('Erreur réseau') }
+    finally { setUnlocking(u => { const n = new Set(u); n.delete(bizId); return n }) }
   }
 
   // Count due callbacks across all leads
@@ -615,98 +636,59 @@ export default function CRMPage() {
                             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" /> Contact</h4>
                             <div className="space-y-2.5">
                               {([
-                                { icon: Phone, label: 'Téléphone', field: 'phone',   val: biz?.phone },
-                                { icon: Mail,  label: 'E-mail',    field: 'email',   val: biz?.email },
-                                { icon: Globe, label: 'Site web',  field: 'website', val: biz?.website },
-                                { icon: MapPin,label: 'Adresse',   field: 'address', val: biz?.address },
-                              ] as {icon:React.ElementType;label:string;field:string;val:unknown}[]).map(({ icon: Icon, label, field, val }) => (
+                                { icon: Phone, label: 'Téléphone', val: biz?.phone },
+                                { icon: Mail,  label: 'E-mail',    val: biz?.email },
+                                { icon: Globe, label: 'Site web',  val: biz?.website },
+                                { icon: MapPin,label: 'Adresse',   val: biz?.address },
+                              ] as {icon:React.ElementType;label:string;val:unknown}[]).map(({ icon: Icon, label, val }) => (
                                 <div key={label} className="flex items-start gap-2">
                                   <Icon className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-[10px] text-slate-400 mb-0.5">{label}</p>
                                     {val ? <p className="text-[13px] text-slate-800 break-all">{val as string}</p>
-                                      : isImported ? <p className="text-[11px] text-slate-300 italic">Non renseigné</p>
-                                      : <button onClick={() => unlockField(biz?.id as string, field)} disabled={unlocking[`${biz?.id}:${field}`]==='loading'}
-                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-[6px] hover:bg-amber-100 transition-colors disabled:opacity-50">
-                                          {unlocking[`${biz?.id}:${field}`]==='loading' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Lock className="w-2.5 h-2.5" />}
-                                          Débloquer · {FIELD_COSTS[field]??1} cr
-                                        </button>}
+                                      : (isImported || (biz as Record<string,unknown>)?._unlocked)
+                                        ? <p className="text-[11px] text-slate-300 italic">Non renseigné</p>
+                                        : <button onClick={() => unlockCompany(biz?.id as string)} disabled={unlocking.has(biz?.id as string)}
+                                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-[6px] hover:bg-amber-100 transition-colors disabled:opacity-50">
+                                            {unlocking.has(biz?.id as string) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Lock className="w-2.5 h-2.5" />}
+                                            Débloquer · 1 cr
+                                          </button>}
                                   </div>
                                 </div>
                               ))}
                             </div>
                           </div>
 
-                          {/* Dirigeant + Directions */}
+                          {/* Dirigeant */}
                           <div>
                             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5"><UserRound className="w-3.5 h-3.5" /> Dirigeant</h4>
                             <div className="space-y-2.5">
                               {([
-                                { icon: UserRound, label: 'Nom',           field: 'dirigeant_name',  val: biz?.dirigeant_name },
-                                { icon: Phone,     label: 'Tél. direct',   field: 'dirigeant_phone', val: biz?.dirigeant_phone },
-                                { icon: Mail,      label: 'E-mail direct', field: 'dirigeant_email', val: biz?.dirigeant_email },
-                              ] as {icon:React.ElementType;label:string;field:string;val:unknown}[]).map(({ icon: Icon, label, field, val }) => (
+                                { icon: UserRound, label: 'Nom', val: biz?.dirigeant_name },
+                              ] as {icon:React.ElementType;label:string;val:unknown}[]).map(({ icon: Icon, label, val }) => (
                                 <div key={label} className="flex items-start gap-2">
                                   <Icon className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-[10px] text-slate-400 mb-0.5">{label}</p>
                                     {val ? <p className="text-[13px] text-slate-800 break-all">{val as string}</p>
-                                      : isImported ? <p className="text-[11px] text-slate-300 italic">Non renseigné</p>
-                                      : <button onClick={() => unlockField(biz?.id as string, field)} disabled={unlocking[`${biz?.id}:${field}`]==='loading'}
-                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-[6px] hover:bg-amber-100 transition-colors disabled:opacity-50">
-                                          {unlocking[`${biz?.id}:${field}`]==='loading' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Lock className="w-2.5 h-2.5" />}
-                                          Débloquer · {FIELD_COSTS[field]??2} cr
-                                        </button>}
+                                      : (isImported || (biz as Record<string,unknown>)?._unlocked)
+                                        ? <p className="text-[11px] text-slate-300 italic">Non renseigné</p>
+                                        : <button onClick={() => unlockCompany(biz?.id as string)} disabled={unlocking.has(biz?.id as string)}
+                                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-[6px] hover:bg-amber-100 transition-colors disabled:opacity-50">
+                                            {unlocking.has(biz?.id as string) ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Lock className="w-2.5 h-2.5" />}
+                                            Débloquer · 1 cr
+                                          </button>}
                                   </div>
                                 </div>
                               ))}
                             </div>
-
-                            {/* Direction contacts */}
-                            {([{prefix:'dir_daf',emoji:'💰',label:'DAF'},{prefix:'dir_rh',emoji:'👥',label:'DRH'},{prefix:'dir_achat',emoji:'🛒',label:'Dir. Achats'},{prefix:'dir_marketing',emoji:'📣',label:'Marketing'},{prefix:'dir_commercial',emoji:'📈',label:'Commercial'}] as {prefix:string;emoji:string;label:string}[]).map(({prefix,emoji,label}) => {
-                              if (isImported) return null
-                              const nom = biz?.[`${prefix}_nom`] as string|null; const email = biz?.[`${prefix}_email`] as string|null
-                              if (!nom && !email) return null
-                              return (
-                                <div key={prefix} className="mt-2.5 p-2.5 bg-white border border-[rgba(0,0,0,0.07)] rounded-[10px]">
-                                  <p className="text-[10px] font-bold text-slate-500 mb-1">{emoji} {label}</p>
-                                  {nom ? <p className="text-[12px] font-semibold text-slate-800">{nom}</p>
-                                    : <button onClick={() => unlockField(biz?.id as string, `${prefix}_nom`)}
-                                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-[5px] hover:bg-amber-100">
-                                        <Lock className="w-2 h-2" /> Nom · 2 cr
-                                      </button>}
-                                  {email ? <p className="text-[11px] text-brand-600 mt-0.5 break-all">{email}</p>
-                                    : <button onClick={() => unlockField(biz?.id as string, `${prefix}_email`)}
-                                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-[5px] hover:bg-amber-100 mt-0.5">
-                                        <Lock className="w-2 h-2" /> E-mail · 5 cr
-                                      </button>}
-                                </div>
-                              )
-                            })}
                           </div>
 
                           {/* Entreprise + Notes */}
                           <div>
                             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> Entreprise</h4>
                             <div className="space-y-2.5 mb-4">
-                              {([
-                                { icon: Users,      label: 'Effectif',         field: 'effectif_label', val: biz?.effectif_label },
-                                { icon: TrendingUp, label: "CA",               field: 'revenue_label',  val: biz?.revenue_label },
-                              ] as {icon:React.ElementType;label:string;field:string;val:unknown}[]).map(({ icon: Icon, label, field, val }) => (
-                                <div key={label} className="flex items-start gap-2">
-                                  <Icon className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                                  <div className="flex-1">
-                                    <p className="text-[10px] text-slate-400 mb-0.5">{label}</p>
-                                    {val ? <p className="text-[13px] text-slate-800">{val as string}</p>
-                                      : isImported ? <p className="text-[11px] text-slate-300 italic">Non renseigné</p>
-                                      : <button onClick={() => unlockField(biz?.id as string, field)} disabled={unlocking[`${biz?.id}:${field}`]==='loading'}
-                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-[6px] hover:bg-amber-100 transition-colors disabled:opacity-50">
-                                          {unlocking[`${biz?.id}:${field}`]==='loading' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Lock className="w-2.5 h-2.5" />}
-                                          Débloquer · {FIELD_COSTS[field]??2} cr
-                                        </button>}
-                                  </div>
-                                </div>
-                              ))}
+                              {/* placeholder — effectif/CA not available in current schema */}
                             </div>
 
                             {/* Custom fields from import — anything that didn't map to a named field */}

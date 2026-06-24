@@ -7,7 +7,7 @@ import { Search, Clock, ArrowRight, Database, MapPin, Filter, Trash2, Loader2 } 
 type Query = {
   id: string
   filters: {
-    rub_slugs?: string[]
+    activites?: string[]
     sectors?: string[]
     domaines?: string[]
     cities?: string[]
@@ -37,8 +37,7 @@ export default function DatabasesPage() {
   function buildResultsUrl(q: Query) {
     const params = new URLSearchParams()
     const f = q.filters
-    if (f.rub_slugs?.length)  params.set('rub_slugs', f.rub_slugs.join(','))
-    if (f.sectors?.length)    params.set('sectors',   f.sectors.join(','))
+    if (f.activites?.length)  params.set('activites', f.activites.join(','))
     if (f.cities?.length)     params.set('cities',    f.cities.join(','))
     if (f.name)               params.set('name',      f.name)
     return `/results?${params.toString()}`
@@ -47,8 +46,7 @@ export default function DatabasesPage() {
   function describeFilters(q: Query) {
     const f = q.filters
     const parts: string[] = []
-    if (f.rub_slugs?.length)  parts.push(`${f.rub_slugs.length} activité${f.rub_slugs.length > 1 ? 's' : ''}`)
-    if (f.sectors?.length)    parts.push(f.sectors.join(', '))
+    if (f.activites?.length)  parts.push(`${f.activites.length} activité${f.activites.length > 1 ? 's' : ''}`)
     if (f.cities?.length)     parts.push(f.cities.join(', '))
     if (f.name)               parts.push(`"${f.name}"`)
     return parts.length ? parts.join(' · ') : 'Toutes les entreprises'

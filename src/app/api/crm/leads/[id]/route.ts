@@ -32,14 +32,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const body = await request.json()
     const { status, priority, notes, callback_date, callback_note, call_outcome, call_notes } = body
 
-    // Get lead with business name (works whether business_id is set or null — imported leads)
+    // Get lead with company name (works whether company_id is set or null — imported leads)
     const { data: lead } = await supabaseAdmin
       .from('crm_leads')
-      .select('id, user_id, status, priority, business_id, notes, company_name, businesses(name)')
+      .select('id, user_id, status, priority, company_id, notes, company_name, companies(name)')
       .eq('id', params.id).eq('user_id', user.id).single()
 
     if (!lead) return NextResponse.json({ error: 'Lead introuvable' }, { status: 404 })
-    const bizName = (lead.businesses as unknown as { name: string } | null)?.name
+    const bizName = (lead.companies as unknown as { name: string } | null)?.name
       ?? (lead as unknown as { company_name?: string }).company_name
       ?? 'Entreprise'
 
