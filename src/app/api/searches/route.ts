@@ -8,17 +8,9 @@ export async function GET() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-
-    const { data, error } = await supabaseAdmin
-      .from('queries')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(50)
-
-    if (error) throw error
+    const { data } = await supabaseAdmin
+      .from('queries').select('*').eq('user_id', user.id)
+      .order('created_at', { ascending: false }).limit(50)
     return NextResponse.json({ queries: data ?? [] })
-  } catch (e) {
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
-  }
+  } catch { return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 }) }
 }

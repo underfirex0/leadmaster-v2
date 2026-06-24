@@ -1,118 +1,168 @@
 'use client'
-
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Search, Clock, ArrowRight, Database, MapPin, Filter, Loader2 } from 'lucide-react'
+import { Search, Clock, Download, Eye, Trash2, Loader2, Database, ArrowRight, Filter } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 type Query = {
   id: string
-  filters: {
-    activites?: string[]
-    sectors?: string[]
-    domaines?: string[]
-    cities?: string[]
-    name?: string
-  }
+  filters: { sectors?: string[]; domaines?: string[]; activites?: string[]; cities?: string[]; name?: string }
+  fields_requested: string[]
   result_count: number
   credits_spent: number
   query_name: string | null
   created_at: string
 }
 
-function formatDate(d: string) {
-  return new Intl.DateTimeFormat('fr-MA', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(d))
+const FIELD_LABELS: Record<string, string> = {
+  phone: 'Téléphone', email: 'E-mail', website: 'Site web',
+  director: 'Dirigeant', legal: 'ICE + RC', address: 'Adresse', social: 'Réseaux',
+}
+
+function fmt(d: string) {
+  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(d))
 }
 
 export default function DatabasesPage() {
-  const [queries, setQueries] = useState<Query[]>([])
-  const [loading, setLoading] = useState(true)
+  const [queries, setQueries]   = useState<Query[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [toast, setToast]       = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/searches')
-      .then(r => r.json())
-      .then(d => setQueries(d.queries ?? []))
-      .finally(() => setLoading(false))
+    fetch('/api/searches').then(r => r.json()).then(d => { setQueries(d.queries ?? []); setLoading(false) })
   }, [])
 
-  function buildResultsUrl(q: Query) {
-    const params = new URLSearchParams()
-    const f = q.filters
-    if (f.activites?.length)  params.set('activites', f.activites.join(','))
-    if (f.cities?.length)     params.set('cities',    f.cities.join(','))
-    if (f.name)               params.set('name',      f.name)
-    return `/results?${params.toString()}`
+  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
+
+  async function handleDelete(id: string) {
+    setDeleting(id)
+    await fetch(`/api/searches/${id}`, { method: 'DELETE' })
+    setQueries(prev => prev.filter(q => q.id !== id))
+    setDeleting(null)
+    showToast('Recherche supprimée')
+  }
+
+  async function handleCSV(q: Query) {
+    const r = await fetch(`/api/export?queryId=${q.id}`)
+    if (!r.ok) { showToast('Erreur export'); return }
+    const blob = await r.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `leadmaster-${q.id.slice(0,8)}.csv`; a.click()
+    URL.revokeObjectURL(url)
+    showToast('Export téléchargé ✓')
   }
 
   function describeFilters(q: Query) {
     const f = q.filters
     const parts: string[] = []
-    if (f.activites?.length)  parts.push(`${f.activites.length} activité${f.activites.length > 1 ? 's' : ''}`)
-    if (f.cities?.length)     parts.push(f.cities.join(', '))
-    if (f.name)               parts.push(`"${f.name}"`)
-    return parts.length ? parts.join(' · ') : 'Toutes les entreprises'
+    if (f.sectors?.length)   parts.push(...f.sectors.slice(0, 2))
+    if (f.domaines?.length)  parts.push(...f.domaines.slice(0, 2))
+    if (f.activites?.length) parts.push(`${f.activites.length} activité${f.activites.length > 1 ? 's' : ''}`)
+    if (f.cities?.length)    parts.push(...f.cities)
+    if (f.name)              parts.push(`"${f.name}"`)
+    return parts.length ? parts : ['Toutes les entreprises']
   }
 
+  const totalCompanies = queries.reduce((s, q) => s + q.result_count, 0)
+  const totalCredits   = queries.reduce((s, q) => s + q.credits_spent, 0)
+
   return (
-    <div className="min-h-screen bg-surface-1">
-      <div className="max-w-[900px] mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-7">
+    <div className="min-h-screen bg-gray-50">
+      {toast && <div className="fixed top-4 right-4 z-50 bg-gray-900 text-white px-4 py-3 rounded-xl text-[13px] font-medium shadow-xl">{toast}</div>}
+      <div className="max-w-[960px] mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-7 flex-wrap gap-4">
           <div>
-            <h1 className="text-[24px] font-bold text-ink-1 tracking-tight mb-1">Mes recherches</h1>
-            <p className="text-ink-3 text-[14px]">Historique de vos recherches — relancez en un clic</p>
+            <h1 className="text-[26px] font-bold text-gray-900 tracking-tight">Mes recherches</h1>
+            <p className="text-gray-500 text-[14px] mt-1">Retrouvez, re-visualisez et exportez toutes vos recherches passées.</p>
           </div>
-          <Link href="/search" className="btn-brand btn-sm flex items-center gap-1.5">
-            <Search className="w-3.5 h-3.5" /> Nouvelle recherche
+          <Link href="/search" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-semibold text-[13.5px] hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100">
+            <Search className="w-4 h-4" /> Nouvelle recherche
           </Link>
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-6 h-6 text-brand-600 animate-spin" />
+        {/* Stats */}
+        {queries.length > 0 && (
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            {[
+              { label: 'Recherches total', val: queries.length, icon: Database },
+              { label: 'Entreprises trouvées', val: totalCompanies.toLocaleString('fr-FR'), icon: Filter },
+              { label: 'Crédits dépensés', val: totalCredits.toLocaleString('fr-FR'), icon: Search },
+            ].map((s, i) => {
+              const Icon = s.icon
+              return (
+                <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0">
+                    <Icon className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <div className="text-[22px] font-bold text-gray-900 font-mono">{s.val}</div>
+                    <div className="text-[12px] text-gray-400">{s.label}</div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 text-indigo-600 animate-spin" /></div>
         ) : queries.length === 0 ? (
-          <div className="card p-14 text-center">
-            <Database className="w-10 h-10 text-ink-5 mx-auto mb-4" />
-            <h3 className="font-semibold text-ink-2 text-[16px] mb-2">Aucune recherche effectuée</h3>
-            <p className="text-ink-4 text-[13.5px] mb-5">Vos recherches apparaîtront ici pour un accès rapide.</p>
-            <Link href="/search" className="btn-brand inline-flex">
-              <Search className="w-4 h-4" /> Commencer la prospection
+          <div className="bg-white rounded-2xl border border-gray-100 p-14 text-center">
+            <Database className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+            <h3 className="font-bold text-gray-700 text-[17px] mb-2">Aucune recherche effectuée</h3>
+            <p className="text-gray-400 text-[14px] mb-6">Vos recherches apparaîtront ici avec toutes les données déverrouillées.</p>
+            <Link href="/search" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold text-[14px] hover:bg-indigo-700">
+              Commencer <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         ) : (
           <div className="space-y-3">
             {queries.map(q => (
-              <div key={q.id} className="card p-4 hover:shadow-[var(--sh-card-md)] transition-shadow group">
-                <div className="flex items-start justify-between gap-3">
+              <div key={q.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Filter className="w-3.5 h-3.5 text-brand-500 shrink-0" />
-                      <span className="text-[13.5px] font-semibold text-ink-1 truncate">
-                        {q.query_name ?? describeFilters(q)}
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className="flex items-center gap-1.5 text-[12px] text-gray-400">
+                        <Clock className="w-3.5 h-3.5" />{fmt(q.created_at)}
+                      </span>
+                      <span className="text-[12px] font-bold text-gray-700 bg-gray-100 rounded-full px-2.5 py-0.5">
+                        📋 {q.result_count.toLocaleString('fr-FR')} entreprises
+                      </span>
+                      <span className="text-[12px] font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-2.5 py-0.5">
+                        ⚡ {q.credits_spent.toLocaleString('fr-FR')} cr dépensés
+                        {q.result_count > 0 ? ` · ${Math.round(q.credits_spent / q.result_count)} cr/biz` : ''}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 text-[12px] text-ink-4 flex-wrap mt-0.5">
-                      <span className="flex items-center gap-1">
-                        <Search className="w-3 h-3" />
-                        {q.result_count.toLocaleString('fr-MA')} entreprises
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatDate(q.created_at)}
-                      </span>
-                      {q.filters.cities?.length && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {q.filters.cities.join(', ')}
-                        </span>
-                      )}
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {describeFilters(q).map((tag, i) => (
+                        <span key={i} className="text-[12px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-0.5">{tag}</span>
+                      ))}
                     </div>
+                    {q.fields_requested?.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        <span className="text-[11px] text-gray-400 mr-1">Champs :</span>
+                        {q.fields_requested.map(f => (
+                          <span key={f} className="text-[11px] text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{FIELD_LABELS[f] ?? f}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <Link
-                    href={buildResultsUrl(q)}
-                    className="btn-brand btn-sm shrink-0 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    Relancer <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => handleCSV(q)}
+                      className="flex items-center gap-1.5 text-[12.5px] font-semibold text-gray-600 border border-gray-200 rounded-xl px-3 py-2 hover:bg-gray-50 transition-colors">
+                      <Download className="w-3.5 h-3.5" /> CSV
+                    </button>
+                    <Link href={`/databases/${q.id}`}
+                      className="flex items-center gap-1.5 text-[12.5px] font-semibold text-indigo-600 border border-indigo-200 rounded-xl px-3 py-2 hover:bg-indigo-50 transition-colors">
+                      <Eye className="w-3.5 h-3.5" /> Voir
+                    </Link>
+                    <button onClick={() => handleDelete(q.id)} disabled={deleting === q.id}
+                      className="text-red-400 hover:text-red-600 border border-red-100 rounded-xl p-2 hover:bg-red-50 transition-colors">
+                      {deleting === q.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

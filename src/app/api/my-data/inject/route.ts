@@ -14,80 +14,53 @@ export async function POST(request: NextRequest) {
 
     // Verify user owns these unlocks
     const { data: unlocks } = await supabaseAdmin
-      .from('company_unlocks')
-      .select('company_id')
-      .eq('user_id', user.id)
-      .in('company_id', company_ids)
+      .from('company_unlocks').select('company_id')
+      .eq('user_id', user.id).in('company_id', company_ids)
+    const owned = new Set((unlocks ?? []).map((u: { company_id: string }) => u.company_id))
+    const valid = company_ids.filter((id: string) => owned.has(id))
+    if (!valid.length) return NextResponse.json({ error: 'Aucune entreprise valide' }, { status: 403 })
 
-    const ownedIds = new Set((unlocks ?? []).map(u => u.company_id))
-    const validIds = company_ids.filter((id: string) => ownedIds.has(id))
-
-    if (!validIds.length) return NextResponse.json({ error: 'Aucune entreprise déverrouillée trouvée' }, { status: 403 })
-
-    // Fetch company data
+    // Fetch companies with name explicitly
     const { data: companies } = await supabaseAdmin
       .from('companies')
-      .select('id, name, city, phone_1, email, website, director, activities, forme_juridique, annee_creation, ice')
-      .in('id', validIds)
+      .select('id, name, city, phone_1, email, website, director, primary_sector, forme_juridique, annee_creation, ice')
+      .in('id', valid)
 
-    if (!companies?.length) return NextResponse.json({ error: 'Entreprises introuvables' }, { status: 404 })
-
-    // Check for already-injected companies (avoid duplicates)
+    // Check already in CRM
     const { data: existing } = await supabaseAdmin
-      .from('crm_leads')
-      .select('company_id')
-      .eq('user_id', user.id)
-      .in('company_id', validIds)
+      .from('crm_leads').select('company_id')
+      .eq('user_id', user.id).in('company_id', valid)
+    const alreadyIn = new Set((existing ?? []).map((l: { company_id: string }) => l.company_id))
 
-    const alreadyInCRM = new Set((existing ?? []).map(l => l.company_id))
+    const toInject = (companies ?? []).filter((c: { id: string }) => !alreadyIn.has(c.id))
+    if (!toInject.length) return NextResponse.json({ injected: 0, skipped: alreadyIn.size, message: 'Déjà dans le CRM' })
 
-    const toInject = companies.filter(c => !alreadyInCRM.has(c.id))
-
-    if (!toInject.length) {
-      return NextResponse.json({
-        injected: 0,
-        skipped: alreadyInCRM.size,
-        message: 'Toutes ces entreprises sont déjà dans votre CRM',
-      })
-    }
-
-    const leads = toInject.map(c => ({
+    const leads = toInject.map((c: Record<string, string | null>) => ({
       user_id:      user.id,
-      source:       'search',
+      source:       'data',
       company_id:   c.id,
-      company_name: c.name,
+      company_name: c.name,          // ← ALWAYS set from companies.name
       phone:        c.phone_1 ?? null,
-      email:        c.email   ?? null,
+      email:        c.email ?? null,
       website:      c.website ?? null,
       contact_name: c.director ?? null,
       city:         c.city ?? null,
       country:      'Maroc',
-      sector:       Array.isArray(c.activities) ? (c.activities[0] ?? null) : null,
+      sector:       c.primary_sector ?? null,
       status:       'to_call',
       priority:     'normal',
-      custom_fields: {
-        forme_juridique: c.forme_juridique ?? '',
-        annee_creation:  c.annee_creation  ?? '',
-        ice:             c.ice             ?? '',
-      },
+      custom_fields: { forme_juridique: c.forme_juridique ?? '', annee_creation: c.annee_creation ?? '', ice: c.ice ?? '' },
     }))
 
-    const { error: insertErr } = await supabaseAdmin
-      .from('crm_leads')
-      .insert(leads)
-
-    if (insertErr) {
-      console.error('CRM inject error:', insertErr)
-      return NextResponse.json({ error: 'Erreur injection CRM: ' + insertErr.message }, { status: 500 })
-    }
+    const { error } = await supabaseAdmin.from('crm_leads').insert(leads)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     return NextResponse.json({
       injected: toInject.length,
-      skipped:  alreadyInCRM.size,
+      skipped:  alreadyIn.size,
       message:  `${toInject.length} entreprise${toInject.length > 1 ? 's' : ''} injectée${toInject.length > 1 ? 's' : ''} dans le CRM`,
     })
   } catch (e) {
-    console.error('Inject error:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

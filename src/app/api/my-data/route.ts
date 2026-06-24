@@ -10,77 +10,54 @@ export async function GET(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
     const { searchParams } = new URL(request.url)
-    const page    = parseInt(searchParams.get('page') ?? '1')
-    const limit   = Math.min(parseInt(searchParams.get('limit') ?? '30'), 100)
-    const city    = searchParams.get('city') ?? ''
-    const search  = searchParams.get('search') ?? ''
-    const sector  = searchParams.get('sector') ?? ''
-    const offset  = (page - 1) * limit
+    const page   = parseInt(searchParams.get('page') ?? '1')
+    const limit  = Math.min(parseInt(searchParams.get('limit') ?? '30'), 100)
+    const city   = searchParams.get('city') ?? ''
+    const search = searchParams.get('search') ?? ''
+    const offset = (page - 1) * limit
 
-    // Fetch ALL unlock records for this user (needed to build the company IN clause).
-    // Supabase defaults to 1000 rows — override with a large limit so users with
-    // many unlocks don't silently lose data. count: 'exact' gives us the true total.
-    const { data: unlocks, count: totalCount } = await supabaseAdmin
+    // Get all unlocked company IDs + which fields were unlocked
+    const { data: unlocks } = await supabaseAdmin
       .from('company_unlocks')
-      .select('company_id, unlocked_at', { count: 'exact' })
+      .select('company_id, fields, unlocked_at, credits_spent')
       .eq('user_id', user.id)
       .order('unlocked_at', { ascending: false })
-      .limit(50000)
 
-    if (!unlocks?.length) {
-      return NextResponse.json({ companies: [], totalCount: 0, page, hasMore: false })
+    if (!unlocks?.length) return NextResponse.json({ companies: [], totalCount: 0, page, hasMore: false })
+
+    const totalCount = unlocks.length
+    const unlockMap: Record<string, { fields: string[]; unlocked_at: string }> = {}
+    for (const u of unlocks) {
+      unlockMap[u.company_id] = { fields: (u.fields as string[]) ?? [], unlocked_at: u.unlocked_at }
     }
 
-    const allCompanyIds = unlocks.map(u => u.company_id)
-    const unlockedAtMap: Record<string, string> = {}
-    for (const u of unlocks) unlockedAtMap[u.company_id] = u.unlocked_at
+    // Paginate by slicing unlock IDs
+    const pageIds = unlocks.slice(offset, offset + limit).map(u => u.company_id)
+    if (!pageIds.length) return NextResponse.json({ companies: [], totalCount, page, hasMore: false })
 
-    // Build company query
-    let companyQuery = supabaseAdmin
+    let q = supabaseAdmin
       .from('companies')
-      .select(`
-        id, telecontact_id, name, city, address_raw,
-        phone_1, phone_2, email, website,
-        facebook, instagram, youtube, linkedin,
-        ice, director, forme_juridique, capital, annee_creation, rc,
-        activities, description, rating, review_count, is_recommended, logo_url
-      `)
-      .in('id', allCompanyIds)
+      .select(`id, name, city, address_raw, phone_1, phone_2, email, website,
+               facebook, instagram, linkedin, youtube, ice, director,
+               forme_juridique, capital, annee_creation, rc, description,
+               activities, primary_sector, primary_domaine, primary_activite,
+               rating, logo_url, latitude, longitude`)
+      .in('id', pageIds)
 
-    if (city)   companyQuery = companyQuery.eq('city', city)
-    if (search) companyQuery = companyQuery.ilike('name', `%${search}%`)
+    if (city)   q = q.eq('city', city)
+    if (search) q = q.ilike('name', `%${search}%`)
 
-    const { data: companies, error } = await companyQuery
-      .order('name')
-      .range(offset, offset + limit - 1)
-
+    const { data: companies, error } = await q
     if (error) throw error
-
-    // When filters are active, totalCount from unlocks table is inaccurate — get filtered count
-    let resolvedTotal = totalCount ?? 0
-    if (city || search) {
-      let countQuery = supabaseAdmin
-        .from('companies')
-        .select('id', { count: 'exact', head: true })
-        .in('id', allCompanyIds)
-      if (city)   countQuery = countQuery.eq('city', city)
-      if (search) countQuery = countQuery.ilike('name', `%${search}%`)
-      const { count: filteredCount } = await countQuery
-      resolvedTotal = filteredCount ?? 0
-    }
 
     const enriched = (companies ?? []).map(c => ({
       ...c,
       is_unlocked: true,
-      unlocked_at: unlockedAtMap[c.id],
+      unlocked_fields: unlockMap[c.id]?.fields ?? [],
+      unlocked_at: unlockMap[c.id]?.unlocked_at,
     }))
 
-    return NextResponse.json({
-      companies: enriched,
-      totalCount: resolvedTotal,
-      page,
-      hasMore: offset + limit < resolvedTotal,
-    })
+    return NextResponse.json({ companies: enriched, totalCount, page, hasMore: offset + limit < totalCount })
   } catch (e) {
     console.error('My data error:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

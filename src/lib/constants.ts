@@ -42,17 +42,19 @@ export const FIELD_LABELS: Record<string, string> = {
   description: 'Description',
 }
 
-// Field group costs (1 credit = full company unlock, these labels are for display)
+// Legacy FIELD_COSTS (kept for backward compat with old CRM/admin code)
 export const FIELD_COSTS: Record<string, number> = {
-  phone: 1,    // phone_1 + phone_2
-  email: 1,    // email
-  website: 1,  // website
-  director: 1, // director
-  legal: 2,    // ice + rc + capital + forme_juridique
-  address: 1,  // address_raw + latitude + longitude
-  social: 1,   // facebook + instagram + linkedin + youtube
+  name: 0, sector: 0, city: 0, region: 0, forme_juridique: 0, status: 0,
+  phone: 1, email: 1, website: 1, address: 1,
+  effectif_label: 2, dirigeant_name: 2, annee_creation: 2,
+  dirigeant_phone: 5, dirigeant_email: 5, revenue_label: 5, capital_social: 5,
+  dir_daf_nom: 2, dir_daf_email: 5, dir_daf_tel: 5,
+  dir_rh_nom: 2, dir_rh_email: 5, dir_rh_tel: 5,
+  dir_achat_nom: 2, dir_achat_email: 5, dir_achat_tel: 5,
+  dir_marketing_nom: 2, dir_marketing_email: 5, dir_marketing_tel: 5,
+  dir_commercial_nom: 2, dir_commercial_email: 5, dir_commercial_tel: 5,
 }
-export const FREE_FIELDS = ['name', 'city', 'primary_sector', 'annee_creation', 'forme_juridique', 'rating', 'review_count', 'is_recommended', 'activities', 'logo_url']
+export const FREE_FIELDS = Object.entries(FIELD_COSTS).filter(([,v]) => v === 0).map(([k]) => k)
 
 // ── Plans ────────────────────────────────────────────────────────
 export const PLANS = {

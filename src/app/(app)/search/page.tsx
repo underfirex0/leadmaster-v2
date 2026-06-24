@@ -1,211 +1,105 @@
 'use client'
-
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Search, ChevronRight, ChevronDown, CheckSquare, Square, Minus,
-  X, MapPin, Building2, Sparkles, Filter, RotateCcw, Info
+  X, MapPin, Zap, RotateCcw, Info, Phone, Mail, Globe, User,
+  Building2, FileText, Share2, Loader2, AlertCircle, Check
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CITIES, SECTOR_ICONS, DEFAULT_SECTOR_ICON } from '@/lib/constants'
 import type { NomenclatureSector, NomenclatureActivite } from '@/types'
 
-// ── Checkbox states ───────────────────────────────────────────
+// ── Field config ─────────────────────────────────────────────
+const FIELDS = [
+  { id: 'phone',    label: 'Téléphone',         icon: Phone,     cost: 1, desc: 'phone_1 + phone_2' },
+  { id: 'email',    label: 'E-mail',             icon: Mail,      cost: 1, desc: 'email professionnel' },
+  { id: 'website',  label: 'Site web',           icon: Globe,     cost: 1, desc: 'URL site internet' },
+  { id: 'director', label: 'Dirigeant',          icon: User,      cost: 1, desc: 'nom du dirigeant' },
+  { id: 'legal',    label: 'ICE + RC + Capital', icon: Building2, cost: 2, desc: 'données légales' },
+  { id: 'address',  label: 'Adresse complète',   icon: MapPin,    cost: 1, desc: 'adresse + GPS' },
+  { id: 'social',   label: 'Réseaux sociaux',    icon: Share2,    cost: 1, desc: 'Facebook, Instagram, LinkedIn' },
+]
+
+const PRESETS = [
+  { id: 'light',    label: 'Contact léger',   fields: ['phone'],                       desc: '~1 cr/biz' },
+  { id: 'standard', label: 'Profil standard', fields: ['phone', 'email'],              desc: '~2 cr/biz' },
+  { id: 'qualified',label: 'Profil qualifié', fields: ['phone', 'email', 'director'],  desc: '~3 cr/biz' },
+  { id: 'complete', label: 'Profil complet',  fields: FIELDS.map(f => f.id),          desc: `~${FIELDS.reduce((s,f)=>s+f.cost,0)} cr/biz` },
+]
+
+const SIZES = [10, 25, 50, 100, 200, 500]
+const FREE_ALWAYS = ['Raison sociale', 'Ville', 'Secteur', 'Activités', 'Année création']
+
+// ── Nomenclature tree ────────────────────────────────────────
 type CheckState = 'none' | 'all' | 'partial'
 
-// ── Tree Node Component ───────────────────────────────────────
-function ActiviteNode({
-  activite,
-  selectedRubs,
-  onToggle,
-}: {
-  activite: NomenclatureActivite
-  selectedRubs: Set<string>
-  onToggle: (slug: string, checked: boolean) => void
-}) {
-  const allSelected = activite.rubs.every(r => selectedRubs.has(r.rub_slug))
-  const anySelected = activite.rubs.some(r => selectedRubs.has(r.rub_slug))
-  const state: CheckState = allSelected ? 'all' : anySelected ? 'partial' : 'none'
-  const [open, setOpen] = useState(false)
-  const single = activite.rubs.length === 1
-
-  function toggle() {
-    if (state === 'all') activite.rubs.forEach(r => onToggle(r.rub_slug, false))
-    else activite.rubs.forEach(r => onToggle(r.rub_slug, true))
-  }
-
-  if (single) {
-    const rub = activite.rubs[0]
-    const checked = selectedRubs.has(rub.rub_slug)
-    return (
-      <div
-        onClick={() => onToggle(rub.rub_slug, !checked)}
-        className={cn(
-          'flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors text-[13px]',
-          checked ? 'bg-brand-50 text-brand-700' : 'hover:bg-surface-2 text-ink-2'
-        )}
-      >
-        <CheckboxIcon state={checked ? 'all' : 'none'} />
-        <span className="flex-1 truncate">{rub.rub}</span>
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <div className="flex items-center gap-1">
-        <div
-          onClick={toggle}
-          className={cn(
-            'flex items-center gap-2 flex-1 px-3 py-1.5 rounded-lg cursor-pointer transition-colors text-[13px]',
-            state !== 'none' ? 'bg-brand-50 text-brand-700' : 'hover:bg-surface-2 text-ink-2'
-          )}
-        >
-          <CheckboxIcon state={state} />
-          <span className="flex-1 truncate font-medium">{activite.activite}</span>
-          <span className="text-[11px] text-ink-4 shrink-0">{activite.rubs.length}</span>
-        </div>
-        <button
-          onClick={() => setOpen(!open)}
-          className="p-1 rounded hover:bg-surface-2 text-ink-4 transition-colors shrink-0"
-        >
-          {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-        </button>
-      </div>
-      {open && (
-        <div className="ml-6 mt-0.5 space-y-0.5">
-          {activite.rubs.map(rub => {
-            const checked = selectedRubs.has(rub.rub_slug)
-            return (
-              <div
-                key={rub.rub_slug}
-                onClick={() => onToggle(rub.rub_slug, !checked)}
-                className={cn(
-                  'flex items-center gap-2 px-3 py-1 rounded-lg cursor-pointer transition-colors text-[12px]',
-                  checked ? 'bg-brand-50/70 text-brand-700' : 'hover:bg-surface-2 text-ink-3'
-                )}
-              >
-                <CheckboxIcon state={checked ? 'all' : 'none'} small />
-                <span className="truncate">{rub.rub}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
+function CheckIcon({ state, sm }: { state: CheckState; sm?: boolean }) {
+  const s = sm ? 'w-3.5 h-3.5' : 'w-4 h-4'
+  if (state === 'all')     return <CheckSquare className={cn(s, 'text-indigo-600 shrink-0')} />
+  if (state === 'partial') return <Minus className={cn(s, 'text-indigo-400 shrink-0')} />
+  return <Square className={cn(s, 'text-gray-300 shrink-0')} />
 }
 
-function CheckboxIcon({ state, small }: { state: CheckState; small?: boolean }) {
-  const size = small ? 'w-3.5 h-3.5' : 'w-4 h-4'
-  if (state === 'all')     return <CheckSquare className={cn(size, 'text-brand-600 shrink-0')} />
-  if (state === 'partial') return <Minus      className={cn(size, 'text-brand-400 shrink-0')} />
-  return <Square className={cn(size, 'text-ink-4 shrink-0')} />
-}
-
-// ── Sector Accordion ─────────────────────────────────────────
-function SectorNode({
-  sector,
-  selectedRubs,
-  onToggleRub,
-  searchQuery,
-}: {
+function SectorNode({ sector, selected, onToggle, search }: {
   sector: NomenclatureSector
-  selectedRubs: Set<string>
-  onToggleRub: (slug: string, checked: boolean) => void
-  searchQuery: string
+  selected: Set<string>
+  onToggle: (v: string, on: boolean) => void
+  search: string
 }) {
   const [open, setOpen] = useState(false)
-  const icon = SECTOR_ICONS[sector.sector] ?? DEFAULT_SECTOR_ICON
+  const allSlugs = useMemo(() =>
+    sector.domaines.flatMap(d => d.activites.flatMap(a => a.rubs.map(r => r.rub_slug))), [sector])
+  const cnt = allSlugs.filter(s => selected.has(s)).length
+  const state: CheckState = cnt === allSlugs.length ? 'all' : cnt > 0 ? 'partial' : 'none'
 
-  const allRubSlugs = useMemo(() =>
-    sector.domaines.flatMap(d => d.activites.flatMap(a => a.rubs.map(r => r.rub_slug))),
-    [sector]
-  )
-  const selectedCount = allRubSlugs.filter(s => selectedRubs.has(s)).length
-  const state: CheckState = selectedCount === allRubSlugs.length ? 'all'
-    : selectedCount > 0 ? 'partial' : 'none'
-
-  // Auto-open if has search query match
-  useEffect(() => {
-    if (searchQuery && sector.sector.toLowerCase().includes(searchQuery.toLowerCase())) setOpen(true)
-  }, [searchQuery, sector.sector])
-
-  function toggleAll() {
-    if (state === 'all') allRubSlugs.forEach(s => onToggleRub(s, false))
-    else allRubSlugs.forEach(s => onToggleRub(s, true))
-  }
-
-  // Filter domaines by search
   const filteredDomaines = useMemo(() => {
-    if (!searchQuery) return sector.domaines
-    const q = searchQuery.toLowerCase()
-    return sector.domaines.map(d => ({
-      ...d,
-      activites: d.activites.filter(a =>
-        a.activite.toLowerCase().includes(q) ||
-        a.rubs.some(r => r.rub.toLowerCase().includes(q))
-      )
-    })).filter(d => d.activites.length > 0 || d.domaine.toLowerCase().includes(q))
-  }, [sector.domaines, searchQuery])
+    if (!search) return sector.domaines
+    const q = search.toLowerCase()
+    return sector.domaines
+      .map(d => ({ ...d, activites: d.activites.filter(a => a.activite.toLowerCase().includes(q) || a.rubs.some(r => r.rub.toLowerCase().includes(q))) }))
+      .filter(d => d.activites.length > 0 || d.domaine.toLowerCase().includes(q))
+  }, [sector.domaines, search])
 
-  if (searchQuery && filteredDomaines.length === 0) return null
+  useEffect(() => { if (search && filteredDomaines.length > 0) setOpen(true) }, [search])
+  if (search && filteredDomaines.length === 0) return null
 
   return (
-    <div className={cn(
-      'border border-[rgba(0,0,0,0.07)] rounded-xl overflow-hidden transition-all',
-      state !== 'none' ? 'border-brand-200 shadow-[0_0_0_2px_rgba(79,70,229,0.08)]' : ''
-    )}>
-      {/* Sector header */}
-      <div
-        className={cn(
-          'flex items-center gap-2.5 px-3.5 py-3 cursor-pointer transition-colors',
-          state !== 'none' ? 'bg-brand-50' : 'hover:bg-surface-1'
-        )}
-      >
-        <div onClick={toggleAll} className="flex items-center gap-2.5 shrink-0">
-          <CheckboxIcon state={state} />
+    <div className={cn('border rounded-xl overflow-hidden transition-all', state !== 'none' ? 'border-indigo-200 shadow-sm' : 'border-gray-100')}>
+      <div className={cn('flex items-center gap-2.5 px-3.5 py-3 cursor-pointer', state !== 'none' ? 'bg-indigo-50' : 'hover:bg-gray-50')}>
+        <div onClick={() => { if (state === 'all') allSlugs.forEach(s => onToggle(s, false)); else allSlugs.forEach(s => onToggle(s, true)) }}>
+          <CheckIcon state={state} />
         </div>
         <div onClick={() => setOpen(!open)} className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="text-base shrink-0">{icon}</span>
-          <span className={cn(
-            'font-semibold text-[13.5px] flex-1 truncate',
-            state !== 'none' ? 'text-brand-800' : 'text-ink-1'
-          )}>
-            {sector.sector}
-          </span>
-          <span className="text-[11px] text-ink-4 shrink-0 font-mono">{sector.totalRubs}</span>
-          <span className="shrink-0 text-ink-4">
-            {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-          </span>
+          <span className={cn('font-semibold text-[13.5px] flex-1 truncate', state !== 'none' ? 'text-indigo-800' : 'text-gray-800')}>{sector.sector}</span>
+          <span className="text-[11px] text-gray-400 font-mono shrink-0">{sector.totalRubs}</span>
+          {open ? <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />}
         </div>
-        {selectedCount > 0 && (
-          <span className="shrink-0 bg-brand-600 text-white text-[11px] font-bold rounded-full px-2 py-0.5 min-w-[22px] text-center">
-            {selectedCount}
-          </span>
-        )}
+        {cnt > 0 && <span className="shrink-0 bg-indigo-600 text-white text-[11px] font-bold rounded-full w-5 h-5 flex items-center justify-center">{cnt}</span>}
       </div>
-
-      {/* Domaine/Activite children */}
       {open && (
-        <div className="border-t border-[rgba(0,0,0,0.06)] bg-white p-2 space-y-1">
-          {filteredDomaines.map(domaine => (
-            <div key={domaine.domaine}>
+        <div className="border-t border-gray-100 bg-white p-2 space-y-1">
+          {filteredDomaines.map(dom => (
+            <div key={dom.domaine}>
               {sector.domaines.length > 1 && (
-                <div className="px-3 py-1 text-[11px] font-bold text-ink-4 uppercase tracking-wider mt-1 first:mt-0">
-                  {domaine.domaine}
-                </div>
+                <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{dom.domaine}</div>
               )}
-              <div className="space-y-0.5">
-                {domaine.activites.map(activite => (
-                  <ActiviteNode
-                    key={activite.activite}
-                    activite={activite}
-                    selectedRubs={selectedRubs}
-                    onToggle={onToggleRub}
-                  />
-                ))}
-              </div>
+              {dom.activites.map(act => {
+                const slugs = act.rubs.map(r => r.rub_slug)
+                const actCnt = slugs.filter(s => selected.has(s)).length
+                const actState: CheckState = actCnt === slugs.length ? 'all' : actCnt > 0 ? 'partial' : 'none'
+                return (
+                  <div
+                    key={act.activite}
+                    onClick={() => { if (actState === 'all') slugs.forEach(s => onToggle(s, false)); else slugs.forEach(s => onToggle(s, true)) }}
+                    className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer text-[13px] transition-colors',
+                      actState !== 'none' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-600')}
+                  >
+                    <CheckIcon state={actState} sm />
+                    <span className="flex-1 truncate">{act.activite}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{act.rubs.length}</span>
+                  </div>
+                )
+              })}
             </div>
           ))}
         </div>
@@ -214,71 +108,60 @@ function SectorNode({
   )
 }
 
-// ── Main Search Page ─────────────────────────────────────────
+// ── Main Page ────────────────────────────────────────────────
 export default function SearchPage() {
   const router = useRouter()
-  const [tree, setTree]           = useState<NomenclatureSector[]>([])
+  const [tree, setTree]             = useState<NomenclatureSector[]>([])
   const [loadingTree, setLoadingTree] = useState(true)
-  const [selectedRubs, setSelectedRubs] = useState<Set<string>>(new Set())
-  const [selectedCities, setSelectedCities] = useState<string[]>([])
+  const [selected, setSelected]     = useState<Set<string>>(new Set())
+  const [cities, setCities]         = useState<string[]>([])
+  const [allCities, setAllCities]   = useState<string[]>([])
   const [nameSearch, setNameSearch] = useState('')
   const [treeSearch, setTreeSearch] = useState('')
-  const [cityOpen, setCityOpen]   = useState(false)
-  const [estimate, setEstimate]   = useState<{ count: number; cost: number } | null>(null)
+  const [cityOpen, setCityOpen]     = useState(false)
+  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(['phone', 'email']))
+  const [maxCompanies, setMaxCompanies]     = useState(50)
+  const [estimate, setEstimate]     = useState<number | null>(null)
   const [estimating, setEstimating] = useState(false)
-  const [searching, setSearching] = useState(false)
+  const [launching, setLaunching]   = useState(false)
+  const [balance, setBalance]       = useState<number | null>(null)
+  const [toast, setToast]           = useState<{ msg: string; type: 'success'|'error' } | null>(null)
 
-  // Load nomenclature tree
   useEffect(() => {
-    fetch('/api/nomenclature')
-      .then(r => r.json())
-      .then(data => { setTree(data); setLoadingTree(false) })
-      .catch(() => setLoadingTree(false))
+    fetch('/api/nomenclature').then(r => r.json()).then(data => { setTree(data); setLoadingTree(false) }).catch(() => setLoadingTree(false))
+    fetch('/api/me/balance').then(r => r.json()).then(d => setBalance(d.balance))
+    // Fetch distinct cities
+    fetch('/api/search/cities').then(r => r.json()).then(d => setAllCities(d.cities ?? []))
   }, [])
 
-  const toggleRub = useCallback((slug: string, checked: boolean) => {
-    setSelectedRubs(prev => {
-      const next = new Set(prev)
-      if (checked) next.add(slug)
-      else next.delete(slug)
-      return next
-    })
+  const toggleRub = useCallback((slug: string, on: boolean) => {
+    setSelected(prev => { const n = new Set(prev); on ? n.add(slug) : n.delete(slug); return n })
     setEstimate(null)
   }, [])
 
-  const toggleCity = (city: string) => {
-    setSelectedCities(prev =>
-      prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city]
-    )
-    setEstimate(null)
+  const toggleField = (fid: string) => {
+    setSelectedFields(prev => { const n = new Set(prev); n.has(fid) ? n.delete(fid) : n.add(fid); return n })
   }
 
-  const clearAll = () => {
-    setSelectedRubs(new Set())
-    setSelectedCities([])
-    setNameSearch('')
-    setEstimate(null)
+  function applyPreset(fields: string[]) {
+    setSelectedFields(new Set(fields))
   }
 
-  const hasFilters = selectedRubs.size > 0 || selectedCities.length > 0 || nameSearch.trim()
+  const costPerBiz = useMemo(() => FIELDS.filter(f => selectedFields.has(f.id)).reduce((s, f) => s + f.cost, 0), [selectedFields])
+  const maxCost    = useMemo(() => costPerBiz * maxCompanies, [costPerBiz, maxCompanies])
+  const canAfford  = balance !== null ? balance >= maxCost : true
+  const hasFilter  = selected.size > 0 || cities.length > 0 || nameSearch.trim()
 
-  // Build summary labels
-  const selectionSummary = useMemo(() => {
+  // Summary labels
+  const sectorSummary = useMemo(() => {
     const labels: string[] = []
-    // Group selected rubs by sector
-    const sectorCounts: Record<string, number> = {}
-    for (const sector of tree) {
-      const allSlugs = sector.domaines.flatMap(d => d.activites.flatMap(a => a.rubs.map(r => r.rub_slug)))
-      const cnt = allSlugs.filter(s => selectedRubs.has(s)).length
-      if (cnt > 0) sectorCounts[sector.sector] = cnt
-    }
-    for (const [sector, cnt] of Object.entries(sectorCounts)) {
-      const icon = SECTOR_ICONS[sector] ?? DEFAULT_SECTOR_ICON
-      const total = tree.find(s => s.sector === sector)?.totalRubs ?? 0
-      labels.push(`${icon} ${sector}${cnt < total ? ` (${cnt})` : ''}`)
+    for (const s of tree) {
+      const slugs = s.domaines.flatMap(d => d.activites.flatMap(a => a.rubs.map(r => r.rub_slug)))
+      const cnt = slugs.filter(sl => selected.has(sl)).length
+      if (cnt) labels.push(s.sector)
     }
     return labels
-  }, [selectedRubs, tree])
+  }, [selected, tree])
 
   async function handleEstimate() {
     setEstimating(true)
@@ -286,277 +169,316 @@ export default function SearchPage() {
       const r = await fetch('/api/search/estimate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activites: [...selected], cities, name: nameSearch }),
+      })
+      const d = await r.json()
+      setEstimate(d.count ?? 0)
+    } finally { setEstimating(false) }
+  }
+
+  async function handleLaunch() {
+    if (!selectedFields.size) { setToast({ msg: 'Sélectionnez au moins un champ à débloquer', type: 'error' }); return }
+    setLaunching(true)
+    try {
+      const r = await fetch('/api/search/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          activites: [...selectedRubs],
-          cities: selectedCities,
-          name: nameSearch.trim(),
+          activites: [...selected], cities, name: nameSearch,
+          fields: [...selectedFields], limit: maxCompanies,
         }),
       })
-      const data = await r.json()
-      setEstimate({ count: data.count, cost: data.count })
-    } catch {
-      setEstimate({ count: 0, cost: 0 })
-    } finally {
-      setEstimating(false)
-    }
+      const d = await r.json()
+      if (!r.ok) { setToast({ msg: d.error || 'Erreur', type: 'error' }); return }
+      setBalance(d.newBalance)
+      router.push('/databases')
+    } catch { setToast({ msg: 'Erreur réseau', type: 'error' })
+    } finally { setLaunching(false) }
   }
 
-  function handleSearch() {
-    setSearching(true)
-    const params = new URLSearchParams()
-    if (selectedRubs.size) params.set('activites', [...selectedRubs].join(','))
-    if (selectedCities.length) params.set('cities', selectedCities.join(','))
-    if (nameSearch.trim()) params.set('name', nameSearch.trim())
-    router.push(`/results?${params.toString()}`)
-  }
+  useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 4000); return () => clearTimeout(t) } }, [toast])
 
   return (
-    <div className="min-h-screen bg-surface-1">
+    <div className="min-h-screen bg-gray-50">
+      {toast && (
+        <div className={cn('fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-[13px] font-semibold text-white',
+          toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500')}>
+          {toast.msg}
+        </div>
+      )}
       <div className="max-w-[1280px] mx-auto px-4 py-8">
-
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 text-[13px] text-ink-4 mb-3">
-            <Building2 className="w-3.5 h-3.5" />
-            <span>LeadMaster</span>
-            <ChevronRight className="w-3 h-3" />
-            <span className="text-ink-2">Recherche de données</span>
-          </div>
-          <h1 className="text-[28px] font-bold text-ink-1 tracking-tight mb-1.5">Recherche d'entreprises</h1>
-          <p className="text-ink-3 text-[15px]">
-            Explorez +53 000 entreprises marocaines par secteur d'activité. La navigation est <strong>gratuite</strong> — payez 1 crédit par entreprise pour débloquer les coordonnées.
-          </p>
+        <div className="mb-6">
+          <h1 className="text-[28px] font-bold text-gray-900 tracking-tight">Nouvelle recherche</h1>
+          <p className="text-gray-500 text-[14px] mt-1">Configurez vos critères, choisissez vos champs, estimez le coût.</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+          {/* LEFT */}
+          <div className="space-y-5">
 
-          {/* LEFT — Nomenclature Tree */}
-          <div className="card p-0 overflow-hidden">
-            {/* Tree header */}
-            <div className="px-4 pt-4 pb-3 border-b border-[rgba(0,0,0,0.06)]">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-[14px] text-ink-1 flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-brand-600" />
-                  Secteurs d'activité
-                </h2>
-                {selectedRubs.size > 0 && (
-                  <button
-                    onClick={() => { setSelectedRubs(new Set()); setEstimate(null) }}
-                    className="text-[12px] text-brand-600 hover:text-brand-700 flex items-center gap-1 font-medium"
-                  >
-                    <RotateCcw className="w-3 h-3" /> Tout décocher
-                  </button>
-                )}
+            {/* Presets */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5" /> Démarrer avec un profil type
               </div>
-              {/* Tree search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-4" />
-                <input
-                  value={treeSearch}
-                  onChange={e => setTreeSearch(e.target.value)}
-                  placeholder="Rechercher un secteur, activité..."
-                  className="input pl-9 pr-8 py-2 text-[13px] w-full"
-                />
-                {treeSearch && (
-                  <button onClick={() => setTreeSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                    <X className="w-3.5 h-3.5 text-ink-4" />
-                  </button>
-                )}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {PRESETS.map(p => {
+                  const cost = FIELDS.filter(f => p.fields.includes(f.id)).reduce((s,f) => s+f.cost, 0)
+                  const active = p.fields.length === selectedFields.size && p.fields.every(f => selectedFields.has(f))
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => applyPreset(p.fields)}
+                      className={cn('text-left p-3 rounded-xl border-2 transition-all',
+                        active ? 'border-indigo-500 bg-indigo-50' : 'border-gray-100 hover:border-indigo-200 hover:bg-gray-50')}
+                    >
+                      <div className={cn('font-semibold text-[12.5px] mb-0.5', active ? 'text-indigo-700' : 'text-gray-700')}>{p.label}</div>
+                      <div className="text-[11.5px] text-gray-400">~{cost} cr / entreprise</div>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
-            {/* Tree body */}
-            <div className="p-3 space-y-2 max-h-[600px] overflow-y-auto">
-              {loadingTree ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="h-12 skeleton rounded-xl" />
+            {/* Filters */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5" /> Filtres de ciblage
+              </div>
+              <div className="space-y-3">
+                {/* Name */}
+                <div>
+                  <label className="text-[12px] font-medium text-gray-600 mb-1 block">Nom d'entreprise (optionnel)</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input value={nameSearch} onChange={e => { setNameSearch(e.target.value); setEstimate(null) }}
+                      placeholder="Recherche libre..." className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-indigo-400" />
+                  </div>
+                </div>
+                {/* City */}
+                <div>
+                  <label className="text-[12px] font-medium text-gray-600 mb-1 block">Ville</label>
+                  <div className="relative">
+                    <button onClick={() => setCityOpen(!cityOpen)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-[13px] text-left flex items-center justify-between focus:outline-none focus:border-indigo-400">
+                      <span className={cities.length ? 'text-gray-800' : 'text-gray-400'}>
+                        {cities.length ? (cities.length === 1 ? cities[0] : `${cities.length} villes`) : 'Toutes les villes'}
+                      </span>
+                      <ChevronDown className={cn('w-4 h-4 text-gray-400 transition-transform', cityOpen && 'rotate-180')} />
+                    </button>
+                    {cityOpen && (
+                      <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                        <div className="max-h-48 overflow-y-auto p-1.5">
+                          {allCities.map(c => (
+                            <label key={c} className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer text-[13px]">
+                              <input type="checkbox" checked={cities.includes(c)} onChange={() => {
+                                setCities(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])
+                                setEstimate(null)
+                              }} className="accent-indigo-600" />
+                              <span className="text-gray-700">{c}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="border-t px-3 py-2 flex justify-between">
+                          <button onClick={() => setCities([])} className="text-[12px] text-gray-400 hover:text-gray-600">Effacer</button>
+                          <button onClick={() => setCityOpen(false)} className="text-[12px] font-semibold text-indigo-600">OK</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {cities.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {cities.map(c => (
+                        <span key={c} className="inline-flex items-center gap-1 text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full px-2 py-0.5">
+                          {c}<button onClick={() => setCities(p => p.filter(x => x !== c))}><X className="w-2.5 h-2.5" /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Nomenclature Tree */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[11px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5" /> Secteurs d'activité
+                  </div>
+                  {selected.size > 0 && (
+                    <button onClick={() => { setSelected(new Set()); setEstimate(null) }}
+                      className="text-[11.5px] text-indigo-600 hover:text-indigo-700 flex items-center gap-1 font-medium">
+                      <RotateCcw className="w-3 h-3" /> Tout décocher
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                  <input value={treeSearch} onChange={e => setTreeSearch(e.target.value)}
+                    placeholder="Rechercher un secteur, activité..."
+                    className="w-full border border-gray-200 rounded-lg pl-9 pr-8 py-2 text-[13px] focus:outline-none focus:border-indigo-400" />
+                  {treeSearch && <button onClick={() => setTreeSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2"><X className="w-3.5 h-3.5 text-gray-400" /></button>}
+                </div>
+              </div>
+              <div className="p-3 max-h-[500px] overflow-y-auto space-y-2">
+                {loadingTree ? (
+                  Array.from({length:6}).map((_,i) => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)
+                ) : tree.map(s => (
+                  <SectorNode key={s.sector} sector={s} selected={selected} onToggle={toggleRub} search={treeSearch} />
+                ))}
+              </div>
+              <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex justify-between text-[12px] text-gray-400">
+                <span>{tree.reduce((s,t) => s+t.totalRubs, 0)} activités</span>
+                {selected.size > 0 && <span className="text-indigo-600 font-semibold">{selected.size} sélectionnée{selected.size>1?'s':''}</span>}
+              </div>
+            </div>
+
+            {/* Fields */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                  🔓 Champs à débloquer
+                </div>
+                <button onClick={() => setSelectedFields(new Set())} className="text-[11.5px] text-gray-400 hover:text-gray-600">Tout déselectionner</button>
+              </div>
+
+              {/* Free fields */}
+              <div className="mb-4 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                <div className="text-[11px] font-bold text-emerald-700 mb-2">✓ TOUJOURS INCLUS — GRATUIT</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {FREE_ALWAYS.map(f => (
+                    <span key={f} className="text-[11.5px] text-emerald-700 bg-white border border-emerald-200 rounded-full px-2.5 py-0.5">✓ {f}</span>
                   ))}
                 </div>
-              ) : tree.length === 0 ? (
-                <div className="text-center py-8 text-ink-4">Nomenclature non disponible</div>
-              ) : (
-                tree.map(sector => (
-                  <SectorNode
-                    key={sector.sector}
-                    sector={sector}
-                    selectedRubs={selectedRubs}
-                    onToggleRub={toggleRub}
-                    searchQuery={treeSearch}
-                  />
-                ))
-              )}
-            </div>
+              </div>
 
-            {/* Tree footer */}
-            <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] bg-surface-1 flex items-center justify-between text-[12px] text-ink-4">
-              <span>{tree.reduce((s, t) => s + t.totalRubs, 0)} activités disponibles</span>
-              {selectedRubs.size > 0 && (
-                <span className="text-brand-600 font-semibold">{selectedRubs.size} sélectionnée{selectedRubs.size > 1 ? 's' : ''}</span>
-              )}
+              {/* Premium fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {FIELDS.map(f => {
+                  const Icon = f.icon
+                  const on = selectedFields.has(f.id)
+                  return (
+                    <label key={f.id} className={cn(
+                      'flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all',
+                      on ? 'border-indigo-500 bg-indigo-50' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                    )}>
+                      <input type="checkbox" checked={on} onChange={() => toggleField(f.id)} className="sr-only" />
+                      <div className={cn('w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all',
+                        on ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300')}>
+                        {on && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      <Icon className={cn('w-4 h-4 shrink-0', on ? 'text-indigo-600' : 'text-gray-400')} />
+                      <div className="flex-1 min-w-0">
+                        <div className={cn('text-[13px] font-semibold', on ? 'text-indigo-700' : 'text-gray-700')}>{f.label}</div>
+                        <div className="text-[11px] text-gray-400">{f.desc}</div>
+                      </div>
+                      <span className={cn('text-[12px] font-bold shrink-0', on ? 'text-indigo-600' : 'text-gray-400')}>+{f.cost} cr</span>
+                    </label>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
-          {/* RIGHT — Filters + Actions */}
-          <div className="space-y-4">
+          {/* RIGHT — sticky summary */}
+          <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
 
-            {/* City filter */}
-            <div className="card p-4">
-              <h3 className="font-semibold text-[13px] text-ink-1 mb-3 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-brand-600" /> Ville
-              </h3>
-              <div className="relative mb-2">
-                <button
-                  onClick={() => setCityOpen(!cityOpen)}
-                  className="w-full input py-2 text-left flex items-center justify-between text-[13px]"
-                >
-                  <span className={selectedCities.length ? 'text-ink-1' : 'text-ink-4'}>
-                    {selectedCities.length
-                      ? selectedCities.length === 1 ? selectedCities[0] : `${selectedCities.length} villes`
-                      : 'Toutes les villes'}
-                  </span>
-                  <ChevronDown className={cn('w-4 h-4 text-ink-4 transition-transform', cityOpen && 'rotate-180')} />
-                </button>
-                {cityOpen && (
-                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-[rgba(0,0,0,0.09)] rounded-xl shadow-floating overflow-hidden">
-                    <div className="max-h-52 overflow-y-auto p-1">
-                      {CITIES.map(city => (
-                        <label key={city} className="flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer hover:bg-surface-1 text-[13px]">
-                          <input
-                            type="checkbox"
-                            checked={selectedCities.includes(city)}
-                            onChange={() => toggleCity(city)}
-                            className="accent-brand-600 w-3.5 h-3.5"
-                          />
-                          <span className="text-ink-2">{city}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="border-t border-[rgba(0,0,0,0.06)] px-3 py-2 flex justify-between items-center">
-                      <button onClick={() => setSelectedCities([])} className="text-[12px] text-ink-4 hover:text-ink-2">Effacer</button>
-                      <button onClick={() => setCityOpen(false)} className="text-[12px] font-semibold text-brand-600">Appliquer</button>
-                    </div>
+            {/* Volume */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Nombre d'entreprises</div>
+              <div className="text-[44px] font-bold text-gray-900 font-mono tabular-nums leading-none mb-1">{maxCompanies}</div>
+              <div className="text-[12px] text-gray-400 mb-4">résultats max</div>
+              <input type="range" min={5} max={500} value={maxCompanies}
+                onChange={e => { setMaxCompanies(Number(e.target.value)); setEstimate(null) }}
+                className="w-full accent-indigo-600 mb-3" />
+              <div className="flex gap-1.5 flex-wrap">
+                {SIZES.map(s => (
+                  <button key={s} onClick={() => { setMaxCompanies(s); setEstimate(null) }}
+                    className={cn('text-[11.5px] font-semibold px-2.5 py-1 rounded-lg border transition-all',
+                      maxCompanies === s ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-500 hover:border-indigo-300')}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cost summary */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Récapitulatif</div>
+              {FIELDS.filter(f => selectedFields.has(f.id)).map(f => (
+                <div key={f.id} className="flex justify-between text-[13px] mb-1.5">
+                  <span className="text-gray-600">{f.label}</span>
+                  <span className="font-semibold text-gray-800">+{f.cost} cr/biz</span>
+                </div>
+              ))}
+              {selectedFields.size === 0 && <div className="text-[13px] text-gray-400 mb-3">Aucun champ sélectionné</div>}
+              <div className="border-t border-gray-100 mt-3 pt-3 space-y-1.5">
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-gray-500">Coût par entreprise</span>
+                  <span className="font-bold text-gray-800">{costPerBiz} cr</span>
+                </div>
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-gray-500">Max entreprises</span>
+                  <span className="font-bold text-gray-800">×{maxCompanies}</span>
+                </div>
+                <div className="flex justify-between text-[15px] font-bold mt-2 pt-2 border-t border-gray-100">
+                  <span className="text-gray-700">Estimation max</span>
+                  <span className="text-indigo-600">{maxCost.toLocaleString('fr-MA')} cr</span>
+                </div>
+                {balance !== null && (
+                  <div className="flex justify-between text-[12.5px]">
+                    <span className="text-gray-400">Votre solde</span>
+                    <span className={cn('font-semibold', canAfford ? 'text-emerald-600' : 'text-red-500')}>{balance.toLocaleString('fr-MA')} cr</span>
                   </div>
                 )}
               </div>
-              {selectedCities.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {selectedCities.map(c => (
-                    <span key={c} className="inline-flex items-center gap-1 text-[11px] bg-brand-50 text-brand-700 rounded-pill px-2 py-0.5 border border-brand-100">
-                      {c}
-                      <button onClick={() => toggleCity(c)}><X className="w-2.5 h-2.5" /></button>
-                    </span>
-                  ))}
+              {estimate !== null && (
+                <div className="mt-3 p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-center">
+                  <div className="text-[22px] font-bold text-indigo-700">{estimate.toLocaleString('fr-MA')}</div>
+                  <div className="text-[12px] text-indigo-500">entreprises correspondent</div>
+                </div>
+              )}
+              {!canAfford && maxCost > 0 && (
+                <div className="mt-3 flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-xl">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <span className="text-[12px] text-red-600">Solde insuffisant. Rechargez vos crédits.</span>
                 </div>
               )}
             </div>
 
-            {/* Name search */}
-            <div className="card p-4">
-              <h3 className="font-semibold text-[13px] text-ink-1 mb-3 flex items-center gap-1.5">
-                <Search className="w-3.5 h-3.5 text-brand-600" /> Recherche par nom
-              </h3>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-4" />
-                <input
-                  value={nameSearch}
-                  onChange={e => { setNameSearch(e.target.value); setEstimate(null) }}
-                  placeholder="Nom d'entreprise..."
-                  className="input pl-9 py-2 text-[13px] w-full"
-                />
-              </div>
-            </div>
-
-            {/* Selection summary */}
-            {(selectionSummary.length > 0 || selectedCities.length > 0 || nameSearch) && (
-              <div className="card p-4 border-brand-100">
-                <h3 className="font-semibold text-[13px] text-ink-1 mb-3 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-brand-600" /> Sélection actuelle
-                </h3>
-                <div className="space-y-1.5">
-                  {selectionSummary.map((label, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-[13px] text-ink-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-brand-600 shrink-0" />
-                      {label}
-                    </div>
-                  ))}
-                  {selectedCities.length > 0 && (
-                    <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-brand-600 shrink-0" />
-                      <MapPin className="w-3 h-3 text-ink-4" /> {selectedCities.join(', ')}
-                    </div>
-                  )}
-                  {nameSearch && (
-                    <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-brand-600 shrink-0" />
-                      <Search className="w-3 h-3 text-ink-4" /> "{nameSearch}"
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Estimate result */}
-            {estimate && (
-              <div className="card p-4 bg-brand-50 border-brand-200">
-                <div className="text-center">
-                  <div className="text-[28px] font-bold text-brand-700 font-mono tabular-nums">
-                    {estimate.count.toLocaleString('fr-MA')}
-                  </div>
-                  <div className="text-[13px] text-brand-600 mb-2">entreprises trouvées</div>
-                  <div className="flex items-center justify-center gap-1 text-[12px] text-ink-3">
-                    <Info className="w-3 h-3" />
-                    <span>1 crédit / entreprise déverrouillée</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Action buttons */}
+            {/* Actions */}
             <div className="space-y-2.5">
-              {!estimate && hasFilters && (
-                <button
-                  onClick={handleEstimate}
-                  disabled={estimating}
-                  className="btn-ghost w-full justify-center text-[13.5px] font-semibold"
-                >
-                  {estimating ? (
-                    <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-brand-300 border-t-brand-600 rounded-full animate-spin" />Estimation...</span>
-                  ) : '📊 Estimer le nombre de résultats'}
+              {!estimate && hasFilter && (
+                <button onClick={handleEstimate} disabled={estimating}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-indigo-200 text-indigo-600 rounded-xl font-semibold text-[13.5px] hover:bg-indigo-50 transition-all">
+                  {estimating ? <Loader2 className="w-4 h-4 animate-spin" /> : '📊'}
+                  {estimating ? 'Estimation...' : 'Estimer le nombre de résultats'}
                 </button>
               )}
               <button
-                onClick={handleSearch}
-                disabled={searching}
-                className="btn-brand w-full justify-center text-[14px] font-semibold"
+                onClick={handleLaunch}
+                disabled={launching || !selectedFields.size || !canAfford}
+                className={cn('w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-[14px] transition-all shadow-lg',
+                  !selectedFields.size || !canAfford
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200')}
               >
-                {searching ? (
-                  <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-brand-300 border-t-white rounded-full animate-spin" />Chargement...</span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <Search className="w-4 h-4" />
-                    {hasFilters ? 'Voir les entreprises' : 'Parcourir toutes les entreprises'}
-                    <ChevronRight className="w-4 h-4" />
-                  </span>
-                )}
+                {launching ? <><Loader2 className="w-4 h-4 animate-spin" />Lancement...</> : <>Lancer la recherche →</>}
               </button>
-              {hasFilters && (
-                <button onClick={clearAll} className="w-full text-center text-[12px] text-ink-4 hover:text-ink-2 transition-colors py-1">
-                  Effacer tous les filtres
-                </button>
+              {!hasFilter && !launching && (
+                <p className="text-center text-[12px] text-gray-400">Ajoutez au moins un filtre (secteur, ville...) pour lancer.</p>
               )}
             </div>
 
-            {/* Credit info box */}
-            <div className="rounded-xl bg-surface-2 border border-[rgba(0,0,0,0.06)] p-4 text-[12px] text-ink-3">
-              <div className="font-semibold text-ink-2 mb-2 flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5 text-brand-500" /> Comment ça marche
-              </div>
-              <ul className="space-y-1.5 list-none">
-                <li className="flex items-start gap-1.5"><span className="text-green-500 shrink-0 mt-0.5">✓</span> Navigation gratuite — voyez le nom, la ville, les activités</li>
-                <li className="flex items-start gap-1.5"><span className="text-brand-500 shrink-0 mt-0.5">🔓</span> 1 crédit = accès complet (téléphone, email, dirigeant, ICE…)</li>
-                <li className="flex items-start gap-1.5"><span className="text-purple-500 shrink-0 mt-0.5">📁</span> Données débloquées dans "Mes Données" à vie</li>
-                <li className="flex items-start gap-1.5"><span className="text-amber-500 shrink-0 mt-0.5">🔁</span> Injectez dans votre CRM en 1 clic</li>
+            {/* Info */}
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-[12px] text-gray-500">
+              <div className="font-semibold text-gray-600 mb-2 flex items-center gap-1.5"><Info className="w-3.5 h-3.5" /> Comment ça marche</div>
+              <ul className="space-y-1.5">
+                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0">✓</span> Champs libres (nom, secteur, ville) toujours gratuits</li>
+                <li className="flex items-start gap-1.5"><span className="text-indigo-500 shrink-0">✓</span> Coût déduit uniquement pour les champs débloqués</li>
+                <li className="flex items-start gap-1.5"><span className="text-indigo-500 shrink-0">✓</span> Jamais facturé deux fois pour le même champ</li>
+                <li className="flex items-start gap-1.5"><span className="text-amber-500 shrink-0">✓</span> Estimation = maximum — le coût réel peut être inférieur</li>
               </ul>
             </div>
           </div>

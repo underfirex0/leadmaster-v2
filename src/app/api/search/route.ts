@@ -74,15 +74,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Save to query history on first page only (non-blocking)
-    if (page === 1) supabaseAdmin.from('queries').insert({
+    // Save to query history (non-blocking)
+    supabaseAdmin.from('queries').insert({
       user_id:          user.id,
       filters:          { sectors, domaines, activites: allActivites, cities, name },
       fields_requested: [],
       result_count:     totalCount,
       credits_spent:    0,
     }).then(() => {}).catch(() => {})
-
 
     return NextResponse.json({
       companies,

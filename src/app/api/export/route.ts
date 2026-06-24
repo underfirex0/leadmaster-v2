@@ -11,83 +11,55 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const queryId = searchParams.get('queryId')
-    if (!queryId) return NextResponse.json({ error: 'queryId requis' }, { status: 400 })
 
-    // Get user plan and CSV limit
-    const { data: profile } = await supabaseAdmin
-      .from('profiles').select('plan_id').eq('id', user.id).single()
-    const { data: plan } = await supabaseAdmin
-      .from('plans').select('csv_export_limit').eq('id', profile?.plan_id ?? 'decouverte').single()
-
-    const csvLimit: number | null = plan?.csv_export_limit ?? 5
-
-    // Get query
-    const { data: query } = await supabaseAdmin
-      .from('queries').select('*').eq('id', queryId).eq('user_id', user.id).single()
-    if (!query) return NextResponse.json({ error: 'Requête introuvable' }, { status: 404 })
-
-    // Get unlocked data
-    const { data: businesses } = await supabaseAdmin
-      .from('businesses').select('*').in('id', query.business_ids ?? [])
+    // Get query to know which fields were unlocked
+    let fields: string[] = ['phone','email','website','director','legal','address','social']
+    if (queryId) {
+      const { data: q } = await supabaseAdmin.from('queries').select('fields_requested').eq('id', queryId).eq('user_id', user.id).single()
+      if (q?.fields_requested?.length) fields = q.fields_requested as string[]
+    }
 
     const { data: unlocks } = await supabaseAdmin
-      .from('unlock_events').select('business_id, field')
-      .eq('user_id', user.id).in('business_id', query.business_ids ?? [])
+      .from('company_unlocks').select('company_id').eq('user_id', user.id)
+    if (!unlocks?.length) return new NextResponse('', { headers: { 'Content-Type': 'text/csv' } })
 
-    const unlockMap: Record<string, Set<string>> = {}
-    for (const u of unlocks ?? []) {
-      if (!unlockMap[u.business_id]) unlockMap[u.business_id] = new Set()
-      unlockMap[u.business_id].add(u.field)
+    const ids = unlocks.map((u: { company_id: string }) => u.company_id)
+    const { data: companies } = await supabaseAdmin
+      .from('companies')
+      .select('id, name, city, primary_sector, annee_creation, phone_1, phone_2, email, website, director, ice, rc, capital, forme_juridique, address_raw, facebook, instagram, linkedin')
+      .in('id', ids)
+
+    const FIELD_COLS: Record<string, string[]> = {
+      phone: ['phone_1','phone_2'], email: ['email'], website: ['website'],
+      director: ['director'], legal: ['ice','rc','capital','forme_juridique'],
+      address: ['address_raw'], social: ['facebook','instagram','linkedin'],
     }
 
-    let rows = (businesses ?? []).map(b => {
-      const u = unlockMap[b.id] || new Set()
-      return {
-        'Raison sociale': b.name || '',
-        'Secteur': b.sector || '',
-        'Ville': b.city || '',
-        'Région': b.region || '',
-        'Forme juridique': b.forme_juridique || '',
-        'Téléphone': u.has('phone') ? (b.phone || '') : '',
-        'E-mail': u.has('email') ? (b.email || '') : '',
-        'Site web': u.has('website') ? (b.website || '') : '',
-        'Adresse': u.has('address') ? (b.address || '') : '',
-        'Effectif': u.has('effectif_label') ? (b.effectif_label || '') : '',
-        'Nom dirigeant': u.has('dirigeant_name') ? (b.dirigeant_name || '') : '',
-        'Année création': u.has('annee_creation') ? (b.annee_creation || '') : '',
-        'Tél. dirigeant': u.has('dirigeant_phone') ? (b.dirigeant_phone || '') : '',
-        'E-mail dirigeant': u.has('dirigeant_email') ? (b.dirigeant_email || '') : '',
-        'Chiffre d\'affaires': u.has('revenue_label') ? (b.revenue_label || '') : '',
-        'Capital social': u.has('capital_social') ? (b.capital_social || '') : '',
-      }
-    })
+    const fixedCols = ['name','city','primary_sector','annee_creation']
+    const extraCols = fields.flatMap(f => FIELD_COLS[f] ?? [])
+    const allCols   = [...fixedCols, ...extraCols]
 
-    // Apply CSV limit
-    if (csvLimit !== null && rows.length > csvLimit) {
-      rows = rows.slice(0, csvLimit)
+    const LABELS: Record<string,string> = {
+      name:'Raison sociale', city:'Ville', primary_sector:'Secteur', annee_creation:'Année création',
+      phone_1:'Téléphone 1', phone_2:'Téléphone 2', email:'E-mail', website:'Site web',
+      director:'Dirigeant', ice:'ICE', rc:'RC', capital:'Capital', forme_juridique:'Forme juridique',
+      address_raw:'Adresse', facebook:'Facebook', instagram:'Instagram', linkedin:'LinkedIn',
     }
 
-    // Build CSV
-    const bom = '\uFEFF'
-    const headers = Object.keys(rows[0] || {})
-    const csv = bom + [
-      headers.join(','),
-      ...rows.map(row => headers.map(h => `"${String(row[h as keyof typeof row] ?? '').replace(/"/g, '""')}"`).join(','))
-    ].join('\n')
+    const header = allCols.map(c => LABELS[c] ?? c).join(',')
+    const rows = (companies ?? []).map(c => allCols.map(col => {
+      const val = String((c as Record<string,unknown>)[col] ?? '')
+      return val.includes(',') || val.includes('"') ? `"${val.replace(/"/g,'""')}"` : val
+    }).join(','))
 
-    const limitMsg = csvLimit !== null && (businesses?.length ?? 0) > csvLimit
-      ? `; ${businesses?.length} résultats — limité à ${csvLimit} lignes (plan ${profile?.plan_id})`
-      : ''
-
+    const csv = '\uFEFF' + [header, ...rows].join('\n')
     return new NextResponse(csv, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="leadscout-export.csv"`,
-        'X-Export-Info': `${rows.length} lignes${limitMsg}`,
+        'Content-Disposition': `attachment; filename="leadmaster-export.csv"`,
       }
     })
   } catch (e) {
-    console.error(e)
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur export' }, { status: 500 })
   }
 }
