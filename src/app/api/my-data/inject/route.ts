@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     const leads = toInject.map(c => ({
       user_id:      user.id,
-      source:       'data',
+      source:       'search',
       company_id:   c.id,
       company_name: c.name,
       phone:        c.phone_1 ?? null,

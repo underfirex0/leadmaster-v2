@@ -53,6 +53,19 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
+    // When filters are active, totalCount from unlocks table is inaccurate — get filtered count
+    let resolvedTotal = totalCount ?? 0
+    if (city || search) {
+      let countQuery = supabaseAdmin
+        .from('companies')
+        .select('id', { count: 'exact', head: true })
+        .in('id', allCompanyIds)
+      if (city)   countQuery = countQuery.eq('city', city)
+      if (search) countQuery = countQuery.ilike('name', `%${search}%`)
+      const { count: filteredCount } = await countQuery
+      resolvedTotal = filteredCount ?? 0
+    }
+
     const enriched = (companies ?? []).map(c => ({
       ...c,
       is_unlocked: true,
@@ -61,9 +74,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       companies: enriched,
-      totalCount: totalCount ?? 0,
+      totalCount: resolvedTotal,
       page,
-      hasMore: offset + limit < (totalCount ?? 0),
+      hasMore: offset + limit < resolvedTotal,
     })
   } catch (e) {
     console.error('My data error:', e)

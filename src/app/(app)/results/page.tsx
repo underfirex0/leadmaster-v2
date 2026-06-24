@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   Phone, Mail, Globe, User, Building2, MapPin, Lock, Unlock,
-  ChevronLeft, ChevronRight, Download, Users2, Search, X,
-  Star, CheckSquare, Square, Sparkles, ExternalLink, Loader2
+  ChevronLeft, ChevronRight, Users2, Search,
+  Star, CheckSquare, Square, ExternalLink, Loader2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CompanyPreview, Company } from '@/types'
@@ -20,11 +20,13 @@ function CompanyCard({
   selected,
   onSelect,
   onUnlock,
+  isUnlocking,
 }: {
   company: CompanyPreview & { is_unlocked?: boolean; full?: Company }
   selected: boolean
   onSelect: (id: string) => void
   onUnlock: (id: string) => void
+  isUnlocking: boolean
 }) {
   const state: CardState = company.is_unlocked ? 'unlocked' : 'locked'
   const full = company.full
@@ -119,9 +121,14 @@ function CompanyCard({
               </div>
               <button
                 onClick={() => onUnlock(company.id)}
-                className="ml-auto shrink-0 inline-flex items-center gap-1.5 text-[12px] font-semibold text-brand-600 bg-brand-50 border border-brand-200 hover:bg-brand-100 rounded-lg px-3 py-1.5 transition-colors"
+                disabled={isUnlocking}
+                className="ml-auto shrink-0 inline-flex items-center gap-1.5 text-[12px] font-semibold text-brand-600 bg-brand-50 border border-brand-200 hover:bg-brand-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-60"
               >
-                <Unlock className="w-3 h-3" /> Débloquer <span className="text-[11px] text-brand-400">1 cr</span>
+                {isUnlocking
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : <Unlock className="w-3 h-3" />
+                }
+                {isUnlocking ? 'Déverrouillage…' : <>Débloquer <span className="text-[11px] text-brand-400">1 cr</span></>}
               </button>
             </div>
           ) : full ? (
@@ -178,7 +185,6 @@ function CompanyCard({
 // ── Results Page Inner ───────────────────────────────────────
 function ResultsInner() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const supabase = createClient()
 
   const rubSlugs = (searchParams.get('activites') ?? '').split(',').filter(Boolean)
@@ -193,6 +199,7 @@ function ResultsInner() {
   const [selected, setSelected]     = useState<Set<string>>(new Set())
   const [unlocking, setUnlocking]   = useState<Set<string>>(new Set())
   const [bulkUnlocking, setBulkUnlocking] = useState(false)
+  const [addingToCRM, setAddingToCRM] = useState(false)
   const [balance, setBalance]       = useState<number | null>(null)
   const [toast, setToast]           = useState<{ msg: string; type: 'success'|'error' } | null>(null)
 
@@ -292,6 +299,26 @@ function ResultsInner() {
     setBulkUnlocking(false)
   }
 
+  async function addToCRM(ids: string[]) {
+    if (!ids.length) return
+    setAddingToCRM(true)
+    try {
+      const r = await fetch('/api/crm/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessIds: ids }),
+      })
+      const data = await r.json()
+      if (!r.ok) { showToast(data.error || 'Erreur CRM', 'error'); return }
+      showToast(`${data.added} lead${data.added !== 1 ? 's' : ''} ajouté${data.added !== 1 ? 's' : ''} au CRM`, 'success')
+      setSelected(new Set())
+    } catch {
+      showToast('Erreur réseau', 'error')
+    } finally {
+      setAddingToCRM(false)
+    }
+  }
+
   function loadMore() {
     const next = page + 1
     setPage(next)
@@ -367,26 +394,30 @@ function ResultsInner() {
               <>
                 <div className="h-4 w-px bg-[rgba(0,0,0,0.08)]" />
                 <span className="text-[13px] text-ink-3">{selected.size} sélectionnée{selected.size > 1 ? 's' : ''}</span>
-                {selectedLocked > 0 && (
+                <div className="ml-auto flex items-center gap-2">
+                  {selectedLocked > 0 && (
+                    <button
+                      onClick={handleBulkUnlock}
+                      disabled={bulkUnlocking}
+                      className="btn-brand btn-sm"
+                    >
+                      {bulkUnlocking
+                        ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Déverrouillage...</>
+                        : <><Unlock className="w-3.5 h-3.5" /> Débloquer {selectedLocked} ({selectedLocked} cr)</>
+                      }
+                    </button>
+                  )}
                   <button
-                    onClick={handleBulkUnlock}
-                    disabled={bulkUnlocking}
-                    className="btn-brand btn-sm ml-auto"
-                  >
-                    {bulkUnlocking
-                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Déverrouillage...</>
-                      : <><Unlock className="w-3.5 h-3.5" /> Débloquer {selectedLocked} entreprise{selectedLocked > 1 ? 's' : ''} ({selectedLocked} cr)</>
-                    }
-                  </button>
-                )}
-                {selected.size > 0 && (
-                  <Link
-                    href="/my-data"
+                    onClick={() => addToCRM([...selected])}
+                    disabled={addingToCRM}
                     className="btn-ghost btn-sm flex items-center gap-1.5"
                   >
-                    <Users2 className="w-3.5 h-3.5" /> Mes Données
-                  </Link>
-                )}
+                    {addingToCRM
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Ajout...</>
+                      : <><Users2 className="w-3.5 h-3.5" /> Ajouter au CRM</>
+                    }
+                  </button>
+                </div>
               </>
             )}
 
@@ -430,6 +461,7 @@ function ResultsInner() {
                   selected={selected.has(c.id)}
                   onSelect={toggleSelect}
                   onUnlock={id => unlock([id])}
+                  isUnlocking={unlocking.has(c.id)}
                 />
               ))}
             </div>

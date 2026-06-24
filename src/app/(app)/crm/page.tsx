@@ -143,15 +143,6 @@ export default function CRMPage() {
 
   useEffect(() => { fetchLeads() }, [fetchLeads])
 
-  // Count overdue/today callbacks
-  const dueTodayCount = leads.filter(l => {
-    if (activeTab !== 'callbacks_due' && l.status !== 'callback') return false
-    if (!l.callback_date) return false
-    return callbackStatus(l.callback_date) !== 'upcoming'
-  }).length
-
-  const allCallbacksDue = Object.values(counts).reduce((s, v) => s, 0) // placeholder
-
   const totalLeads    = Object.values(counts).reduce((s, v) => s + v, 0)
   const hasImportedLeads = leads.some(l => (l as unknown as { source?: string }).source === 'import')
   const availableCountries = [...new Set(
@@ -341,7 +332,7 @@ export default function CRMPage() {
           <h1 className="text-2xl font-bold text-slate-900">CRM — Suivi des leads</h1>
           <p className="text-slate-500 mt-1">{totalLeads} lead{totalLeads > 1 ? 's' : ''} au total</p>
         </div>
-        <button onClick={fetchLeads} className="btn-secondary flex items-center gap-2 text-sm self-start">
+        <button onClick={fetchLeads} className="btn-ghost flex items-center gap-2 text-sm self-start">
           <RefreshCw className="w-3.5 h-3.5" /> Actualiser
         </button>
       </div>

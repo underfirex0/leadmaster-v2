@@ -162,7 +162,12 @@ export type CRMLead = {
   created_at: string
   updated_at: string
   _call_count?: number
+  // API-joined fields (not DB columns)
+  business?: Record<string, unknown> | null
+  call_logs?: CRMCallLog[]
 }
+
+export type CallOutcome = 'no_answer' | 'voicemail' | 'callback' | 'interested' | 'not_interested'
 
 export type CRMCallLog = {
   id: string

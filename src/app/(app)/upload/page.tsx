@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import * as XLSX from 'xlsx'
 import { Upload, FileText, X, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
@@ -75,9 +75,9 @@ export default function UploadPage() {
   const [expandedId, setExpandedId]   = useState<string | null>(null)
 
   // Load history on mount
-  useState(() => {
+  useEffect(() => {
     loadHistory()
-  })
+  }, [])
 
   async function loadHistory() {
     setLoadingHistory(true)
