@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
     }
     if (cities.length) q = q.in('city', cities)
     if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
-    if (capital_min)   q = q.gte('capital', String(capital_min))
-    if (capital_max)   q = q.lte('capital', String(capital_max))
+    if (capital_min && String(capital_min) !== '')   q = q.gte('capital', String(capital_min))
+    if (capital_max && String(capital_max) !== '')   q = q.lte('capital', String(capital_max))
 
     const { data: rawCompanies, error: fetchErr } = await q.limit(Math.min(limit, 10000) * 3)
     if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })

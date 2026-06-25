@@ -318,16 +318,26 @@ export default function SearchPage() {
                     </div>
                   )}
                 </div>
-                {/* Capital range */}
+                {/* Capital tranches */}
                 <div>
-                  <label className="text-[12px] font-medium text-gray-500 mb-1 block">Capital min (MAD)</label>
-                  <input value={capitalMin} onChange={e=>setCapitalMin(e.target.value)} type="number" placeholder="Ex: 100000"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none focus:border-indigo-400"/>
-                </div>
-                <div>
-                  <label className="text-[12px] font-medium text-gray-500 mb-1 block">Capital max (MAD)</label>
-                  <input value={capitalMax} onChange={e=>setCapitalMax(e.target.value)} type="number" placeholder="Ex: 1000000"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none focus:border-indigo-400"/>
+                  <label className="text-[12px] font-medium text-gray-500 mb-1 block">Tranche de capital</label>
+                  <select
+                    value={capitalMin+"-"+capitalMax}
+                    onChange={e=>{
+                      const [min,max]=e.target.value.split("-")
+                      setCapitalMin(min||'')
+                      setCapitalMax(max||'')
+                    }}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none focus:border-indigo-400 bg-white">
+                    <option value="-">Toutes les tranches</option>
+                    <option value="0-100000">Moins de 100 000 MAD</option>
+                    <option value="100000-500000">100 000 — 500 000 MAD</option>
+                    <option value="500000-1000000">500 000 — 1 000 000 MAD</option>
+                    <option value="1000000-5000000">1M — 5M MAD</option>
+                    <option value="5000000-10000000">5M — 10M MAD</option>
+                    <option value="10000000-50000000">10M — 50M MAD</option>
+                    <option value="50000000-">Plus de 50M MAD</option>
+                  </select>
                 </div>
               </div>
             </div>
