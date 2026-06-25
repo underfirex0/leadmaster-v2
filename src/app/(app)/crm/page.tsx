@@ -53,14 +53,8 @@ function StatusDropdown({status, onUpdate}:{status:Status; onUpdate:(s:Status)=>
     if(!open)return
     const fn=(e:MouseEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node))setOpen(false)}
     document.addEventListener('mousedown',fn)
-    const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
-  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
-
-  return()=>document.removeEventListener('mousedown',fn)
+    return()=>document.removeEventListener('mousedown',fn)
   },[open])
-
-  const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
-  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
 
   return(
     <div ref={ref} className="relative">
@@ -72,7 +66,6 @@ function StatusDropdown({status, onUpdate}:{status:Status; onUpdate:(s:Status)=>
         {cfg.label}<ChevronDown className="w-3 h-3"/>
       </button>
       {open&&(
-        // Use fixed position to escape any overflow:hidden parent
         <div
           className="fixed z-[9999] bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden"
           style={{
@@ -83,10 +76,7 @@ function StatusDropdown({status, onUpdate}:{status:Status; onUpdate:(s:Status)=>
         >
           {ALL_STATUSES.map(s=>{
             const sc=STATUS_CFG[s]
-            const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
-  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
-
-  return(
+            return(
               <button key={s}
                 onClick={e=>{e.stopPropagation();onUpdate(s);setOpen(false)}}
                 className={cn('w-full text-left px-4 py-2.5 text-[13px] font-medium flex items-center gap-2 transition-colors hover:bg-gray-50',
@@ -135,11 +125,7 @@ function LeadCard({lead,onUpdate,onDelete}:{
     onDelete(lead.id)
   }
 
-  const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
-  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
-
   return(
-    // No overflow-hidden on the card itself to allow dropdown to show
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
       <div className="p-4">
         <div className="flex items-start gap-3">
@@ -367,7 +353,7 @@ export default function CRMPage(){
           </div>
         </div>
 
-        {/* Leads */}
+        {/* Pagination info */}
         {!loading && leads.length > PER_PAGE && (
           <div className="flex items-center justify-between mb-3 text-[12.5px] text-gray-400">
             <span>{leads.length.toLocaleString('fr-FR')} leads · page {crmPage}/{crmTotalPages}</span>
@@ -380,6 +366,7 @@ export default function CRMPage(){
             </div>
           </div>
         )}
+
         {/* Leads */}
         {loading?(
           <div className="flex items-center justify-center py-16"><Loader2 className="w-7 h-7 text-indigo-600 animate-spin"/></div>

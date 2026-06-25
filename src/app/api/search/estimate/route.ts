@@ -11,33 +11,54 @@ function parseCapital(val: unknown): number {
   return isNaN(n) ? NaN : n
 }
 
+// Helper to apply shared filters to any query builder
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyFilters(q: any, { sectors, domaines, activites, cities, name }: {
+  sectors: string[]; domaines: string[]; activites: string[]; cities: string[]; name: string
+}) {
+  if (sectors.length || domaines.length || activites.length) {
+    const parts: string[] = []
+    if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map((s:string)=>`"${s}"`).join(',')})`)
+    if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map((s:string)=>`"${s}"`).join(',')})`)
+    if (activites.length) parts.push(`primary_activite.in.(${activites.map((s:string)=>`"${s}"`).join(',')})`)
+    q = q.or(parts.join(','))
+  }
+  if (cities.length) q = q.in('city', cities)
+  if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
+  return q
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-    const { sectors=[], domaines=[], activites=[], cities=[], name='', fields=['basic'], limit=50, capital_min, capital_max } = await request.json()
+    const {
+      sectors=[], domaines=[], activites=[], cities=[], name='',
+      fields=['basic'], limit=50, capital_min, capital_max
+    } = await request.json()
+
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
+    const dataColumns = 'id,' + Object.values(FIELD_GROUPS).flatMap(f => f.columns).join(',')
+    const filterArgs = { sectors, domaines, activites, cities, name }
 
-    // Fetch a sample (up to 500) to estimate coverage
-    let q = supabaseAdmin.from('companies')
-      .select('id,' + Object.values(FIELD_GROUPS).flatMap(f => f.columns).join(','))
+    // ── 1. Exact total count (head:true = no data returned, just count) ──
+    const countQ = applyFilters(
+      supabaseAdmin.from('companies').select('*', { count: 'exact', head: true }),
+      filterArgs
+    )
+    const { count: exactCount } = await countQ
 
-    if (sectors.length || domaines.length || activites.length) {
-      const parts: string[] = []
-      if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map((s:string)=>`"${s}"`).join(',')})`)
-      if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map((s:string)=>`"${s}"`).join(',')})`)
-      if (activites.length) parts.push(`primary_activite.in.(${activites.map((s:string)=>`"${s}"`).join(',')})`)
-      q = q.or(parts.join(','))
-    }
-    if (cities.length) q = q.in('city', cities)
-    if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
+    // ── 2. Sample data for field-coverage estimation (max 500 rows) ──
+    const dataQ = applyFilters(
+      supabaseAdmin.from('companies').select(dataColumns),
+      filterArgs
+    )
+    const { data: rawSample } = await dataQ.limit(500)
+    let sampleData = (rawSample ?? []) as Record<string,unknown>[]
 
-    const { data: sample, count } = await (q as ReturnType<typeof q.select>).select('id,' + Object.values(FIELD_GROUPS).flatMap(f => f.columns).join(','), { count: 'exact' }).limit(500)
-    let sampleData = (sample ?? []) as Record<string,unknown>[]
-
-    // Apply capital filter in-memory
+    // Apply capital filter in-memory (capital column is TEXT)
     if (capital_min || capital_max) {
       const min = capital_min ? parseFloat(capital_min) : null
       const max = capital_max ? parseFloat(capital_max) : null
@@ -50,12 +71,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const totalCount = Math.max(count ?? 0, sampleData.length)
+    // Use exact count from DB; fall back to sample length only if count failed
+    const totalCount = exactCount ?? sampleData.length
     const actualLimit = Math.min(limit, totalCount, 10000)
 
-    // Calculate field coverage + estimated cost from sample
+    // ── 3. Field coverage + estimated cost from sample ──
     const fieldCoverage: Record<string, number> = {}
     const fieldCounts: Record<string, number> = {}
+
     for (const field of allFields) {
       const cols = FIELD_GROUPS[field]?.columns ?? []
       const covered = sampleData.filter(c => cols.some(col => c[col] != null && c[col] !== '')).length
@@ -70,6 +93,7 @@ export async function POST(request: NextRequest) {
       estimatedCost += Math.round(rate * actualLimit * (FIELD_GROUPS[field as FieldGroupId]?.cost ?? 0))
     }
 
+    // ── 4. User balance + free trial check ──
     const { data: profile } = await supabaseAdmin.from('profiles')
       .select('credit_balance,free_trial_used').eq('id', user.id).single()
     const balance = profile?.credit_balance ?? 0
