@@ -1,119 +1,88 @@
-// ── Company field costs ──────────────────────────────────────────
-// 1 credit = unlock ALL data for a company (simplified model)
-export const UNLOCK_COST_PER_COMPANY = 1
+// ── New Credit Model ──────────────────────────────────────────
+// Basic package = 6 fields for 1 cr/company (always included when unlocking)
+// Free trial = first 100 companies with BASIC ONLY = free
 
-// Free fields (always visible in search results)
-export const FREE_COMPANY_FIELDS = [
-  'id', 'name', 'city', 'activities', 'annee_creation',
-  'forme_juridique', 'logo_url', 'rating', 'review_count', 'is_recommended'
-]
+export const FIELD_GROUPS = {
+  basic: {
+    id: 'basic',
+    label: 'Profil de base',
+    cost: 1,
+    columns: ['name','city','primary_sector','primary_activite','activities','forme_juridique','facebook','instagram','linkedin','youtube'],
+    description: 'Raison sociale · Ville · Secteur · Activités · Forme juridique · Réseaux sociaux',
+    icon: '🏢',
+    required: true, // Always charged on first unlock of a company
+  },
+  phone: {
+    id: 'phone', label: 'Téléphone', cost: 1,
+    columns: ['phone_1','phone_2'],
+    description: 'Téléphone fixe + mobile', icon: '📞',
+  },
+  email: {
+    id: 'email', label: 'E-mail', cost: 1,
+    columns: ['email'],
+    description: 'Adresse email professionnelle', icon: '✉️',
+  },
+  address: {
+    id: 'address', label: 'Adresse complète', cost: 1,
+    columns: ['address_raw','latitude','longitude'],
+    description: 'Adresse + coordonnées GPS', icon: '📍',
+  },
+  website: {
+    id: 'website', label: 'Site web', cost: 1,
+    columns: ['website'],
+    description: 'URL du site internet', icon: '🌐',
+  },
+  ice: {
+    id: 'ice', label: 'ICE', cost: 2,
+    columns: ['ice','rc'],
+    description: 'Identifiant fiscal + RC', icon: '🏛️',
+  },
+  annee_creation: {
+    id: 'annee_creation', label: 'Année création', cost: 2,
+    columns: ['annee_creation'],
+    description: 'Année de création de la société', icon: '📅',
+  },
+  director: {
+    id: 'director', label: 'Nom dirigeant', cost: 2,
+    columns: ['director'],
+    description: 'Nom du gérant / dirigeant', icon: '👤',
+  },
+  capital: {
+    id: 'capital', label: 'Capital social', cost: 5,
+    columns: ['capital'],
+    description: 'Montant du capital social', icon: '💰',
+  },
+} as const
 
-// Premium fields (visible after unlock)
-export const PREMIUM_COMPANY_FIELDS = [
-  'phone_1', 'phone_2', 'phones',
-  'email', 'website',
-  'director', 'ice', 'rc', 'capital',
-  'address_raw', 'latitude', 'longitude',
-  'facebook', 'instagram', 'linkedin', 'youtube',
-  'description', 'source_url'
-]
+export type FieldGroupId = keyof typeof FIELD_GROUPS
 
-export const FIELD_LABELS: Record<string, string> = {
-  name: 'Raison sociale',
-  city: 'Ville',
-  activities: 'Activités',
-  annee_creation: 'Année création',
-  forme_juridique: 'Forme juridique',
-  rating: 'Note',
-  review_count: 'Avis',
-  phone_1: 'Téléphone 1',
-  phone_2: 'Téléphone 2',
-  email: 'E-mail',
-  website: 'Site web',
-  director: 'Dirigeant',
-  ice: 'ICE',
-  rc: 'RC',
-  capital: 'Capital',
-  address_raw: 'Adresse',
-  facebook: 'Facebook',
-  instagram: 'Instagram',
-  linkedin: 'LinkedIn',
-  youtube: 'YouTube',
-  description: 'Description',
-}
+export const FIELD_COST = (id: FieldGroupId): number => FIELD_GROUPS[id]?.cost ?? 0
 
-// Legacy FIELD_COSTS (kept for backward compat with old CRM/admin code)
-export const FIELD_COSTS: Record<string, number> = {
-  name: 0, sector: 0, city: 0, region: 0, forme_juridique: 0, status: 0,
-  phone: 1, email: 1, website: 1, address: 1,
-  effectif_label: 2, dirigeant_name: 2, annee_creation: 2,
-  dirigeant_phone: 5, dirigeant_email: 5, revenue_label: 5, capital_social: 5,
-  dir_daf_nom: 2, dir_daf_email: 5, dir_daf_tel: 5,
-  dir_rh_nom: 2, dir_rh_email: 5, dir_rh_tel: 5,
-  dir_achat_nom: 2, dir_achat_email: 5, dir_achat_tel: 5,
-  dir_marketing_nom: 2, dir_marketing_email: 5, dir_marketing_tel: 5,
-  dir_commercial_nom: 2, dir_commercial_email: 5, dir_commercial_tel: 5,
-}
-export const FREE_FIELDS = Object.entries(FIELD_COSTS).filter(([,v]) => v === 0).map(([k]) => k)
+// Columns always visible in search preview (free browse — no unlock needed)
+export const PREVIEW_COLUMNS = ['name','city']
 
-// ── Plans ────────────────────────────────────────────────────────
+// Free trial: first 100 companies with basic only = free
+export const FREE_TRIAL_LIMIT = 100
+export const FREE_TRIAL_FIELDS = ['basic'] as FieldGroupId[]
+
+// ── Plans ────────────────────────────────────────────────────
 export const PLANS = {
-  decouverte: { id:'decouverte', name:'Découverte', price:0,   annual:0,   credits:100,  users:1,    crm:'readonly' as const },
-  solo:       { id:'solo',       name:'Solo',        price:149, annual:119, credits:400,  users:1,    crm:'full'     as const },
-  equipe:     { id:'equipe',     name:'Équipe',      price:390, annual:299, credits:1500, users:3,    crm:'full'     as const },
-  business:   { id:'business',   name:'Business',    price:990, annual:790, credits:5000, users:10,   crm:'advanced' as const },
-  entreprise: { id:'entreprise', name:'Entreprise',  price:0,   annual:0,   credits:null, users:null, crm:'advanced' as const },
+  decouverte: { id:'decouverte', name:'Découverte', price:0,   credits:100,  desc:'Essai gratuit' },
+  solo:       { id:'solo',       name:'Solo',        price:149, credits:400,  desc:'Indépendant' },
+  equipe:     { id:'equipe',     name:'Équipe',      price:390, credits:1500, desc:'Jusqu\'à 3 users' },
+  business:   { id:'business',   name:'Business',    price:990, credits:5000, desc:'Jusqu\'à 10 users' },
+  entreprise: { id:'entreprise', name:'Entreprise',  price:0,   credits:null, desc:'Sur mesure' },
 }
 
 export const CREDIT_PACKS = [
-  { id:'boost',     name:'Pack Boost',     credits:200,   price:59,   pricePerCr:0.30 },
-  { id:'essential', name:'Pack Essential', credits:500,   price:139,  pricePerCr:0.28 },
-  { id:'growth',    name:'Pack Growth',    credits:2000,  price:469,  pricePerCr:0.23 },
-  { id:'pro',       name:'Pack Pro',       credits:5000,  price:990,  pricePerCr:0.20 },
-  { id:'mega',      name:'Pack Mega',      credits:15000, price:2490, pricePerCr:0.17 },
+  { id:'boost',     name:'Pack Boost',     credits:500,   price:99   },
+  { id:'essential', name:'Pack Essential', credits:2000,  price:349  },
+  { id:'growth',    name:'Pack Growth',    credits:5000,  price:799  },
+  { id:'pro',       name:'Pack Pro',       credits:15000, price:1990 },
 ]
 
-// ── Cities / Regions ─────────────────────────────────────────────
-export const CITIES = [
-  'Casablanca','Rabat','Tanger','Marrakech',
-  'Agadir','Fès','Meknès','Oujda',
-  'Settat','Khouribga','El Jadida','Béni Mellal',
-  'Tétouan','Safi','Salé','Bouskoura',
-  'Mohammedia','Kénitra','Nador','Berrechid',
-  'Khémisset','Tiznit','Larache','Khénifra',
-  'Taza','Guelmim','Essaouira','Azilal',
-]
-
-export const REGIONS = [
-  'Casablanca-Settat','Rabat-Salé-Kénitra','Tanger-Tétouan-Al Hoceïma',
-  'Marrakech-Safi','Fès-Meknès','Souss-Massa','Oriental',
-  'Béni Mellal-Khénifra','Drâa-Tafilalet',
-]
-
-// ── Search ───────────────────────────────────────────────────────
-export const MAX_RESULTS = 500
-export const PAGE_SIZE   = 30
-
-// ── Sector Icons (emoji map) ─────────────────────────────────────
-export const SECTOR_ICONS: Record<string, string> = {
-  'Santé et bien-être': '🏥',
-  'BTP & Construction': '🏗️',
-  "Technologies de l'information": '💻',
-  'Import / Export': '🚢',
-  'Industrie & Manufacturing': '🏭',
-  'Agroalimentaire': '🌾',
-  'Services Financiers': '💰',
-  'Commerce & Distribution': '🛒',
-  'Transport & Logistique': '🚛',
-  'Immobilier': '🏠',
-  'Education & Formation': '🎓',
-  'Tourisme & Hôtellerie': '✈️',
-  'Juridique & Conseil': '⚖️',
-  'Artisanat': '🎨',
-  'Agriculture': '🌿',
-  'Energie': '⚡',
-  'Médias & Communication': '📢',
-  'Sport & Loisirs': '⚽',
+// Legacy
+export const FIELD_COSTS: Record<string, number> = {
+  basic:1, phone:1, email:1, address:1, website:1, ice:2, annee_creation:2, director:2, capital:5,
 }
-
-export const DEFAULT_SECTOR_ICON = '🏢'
+export const FREE_FIELDS: string[] = []
