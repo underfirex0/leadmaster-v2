@@ -53,8 +53,14 @@ function StatusDropdown({status, onUpdate}:{status:Status; onUpdate:(s:Status)=>
     if(!open)return
     const fn=(e:MouseEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node))setOpen(false)}
     document.addEventListener('mousedown',fn)
-    return()=>document.removeEventListener('mousedown',fn)
+    const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
+  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
+
+  return()=>document.removeEventListener('mousedown',fn)
   },[open])
+
+  const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
+  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
 
   return(
     <div ref={ref} className="relative">
@@ -77,7 +83,10 @@ function StatusDropdown({status, onUpdate}:{status:Status; onUpdate:(s:Status)=>
         >
           {ALL_STATUSES.map(s=>{
             const sc=STATUS_CFG[s]
-            return(
+            const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
+  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
+
+  return(
               <button key={s}
                 onClick={e=>{e.stopPropagation();onUpdate(s);setOpen(false)}}
                 className={cn('w-full text-left px-4 py-2.5 text-[13px] font-medium flex items-center gap-2 transition-colors hover:bg-gray-50',
@@ -125,6 +134,9 @@ function LeadCard({lead,onUpdate,onDelete}:{
     await fetch(`/api/crm/leads/${lead.id}`,{method:'DELETE'})
     onDelete(lead.id)
   }
+
+  const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
+  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
 
   return(
     // No overflow-hidden on the card itself to allow dropdown to show
@@ -238,6 +250,8 @@ export default function CRMPage(){
   const [tab,setTab]=useState<Status|'all'>('all')
   const [search,setSearch]=useState('')
   const [toast,setToast]=useState<string|null>(null)
+  const PER_PAGE = 50
+  const [crmPage,setCrmPage]=useState(1)
 
   function showToast(msg:string){setToast(msg);setTimeout(()=>setToast(null),3000)}
 
@@ -251,6 +265,7 @@ export default function CRMPage(){
     setLeads(d.leads??[])
     setCounts(d.counts??{})
     setLoading(false)
+    setCrmPage(1)
   },[search])
 
   useEffect(()=>{fetchLeads(tab==='all'?undefined:tab)},[tab,fetchLeads])
@@ -287,6 +302,9 @@ export default function CRMPage(){
     {key:'converted', label:'Converti',     cnt:counts.converted||0},
     {key:'archived',  label:'Archivé',      cnt:counts.archived||0},
   ]
+
+  const crmTotalPages = Math.ceil(leads.length / PER_PAGE)
+  const pagedLeads = leads.slice((crmPage-1)*PER_PAGE, crmPage*PER_PAGE)
 
   return(
     <div className="min-h-screen bg-gray-50">
@@ -350,6 +368,19 @@ export default function CRMPage(){
         </div>
 
         {/* Leads */}
+        {!loading && leads.length > PER_PAGE && (
+          <div className="flex items-center justify-between mb-3 text-[12.5px] text-gray-400">
+            <span>{leads.length.toLocaleString('fr-FR')} leads · page {crmPage}/{crmTotalPages}</span>
+            <div className="flex gap-1">
+              <button onClick={()=>setCrmPage(1)} disabled={crmPage===1} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-30">«</button>
+              <button onClick={()=>setCrmPage(p=>Math.max(1,p-1))} disabled={crmPage===1} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-30">‹</button>
+              <span className="px-3 py-1 text-gray-600 font-semibold">{crmPage}</span>
+              <button onClick={()=>setCrmPage(p=>Math.min(crmTotalPages,p+1))} disabled={crmPage===crmTotalPages} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-30">›</button>
+              <button onClick={()=>setCrmPage(crmTotalPages)} disabled={crmPage===crmTotalPages} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-30">»</button>
+            </div>
+          </div>
+        )}
+        {/* Leads */}
         {loading?(
           <div className="flex items-center justify-center py-16"><Loader2 className="w-7 h-7 text-indigo-600 animate-spin"/></div>
         ):leads.length===0?(
@@ -363,7 +394,7 @@ export default function CRMPage(){
           </div>
         ):(
           <div className="space-y-3">
-            {leads.map(lead=>(
+            {pagedLeads.map(lead=>(
               <LeadCard key={lead.id} lead={lead} onUpdate={updateLead} onDelete={removeLead}/>
             ))}
           </div>

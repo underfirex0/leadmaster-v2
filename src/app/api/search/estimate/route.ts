@@ -5,6 +5,12 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { FIELD_GROUPS } from '@/lib/constants'
 import type { FieldGroupId } from '@/lib/constants'
 
+function parseCapital(val: unknown): number {
+  if (!val) return NaN
+  const n = parseFloat(String(val).replace(/[^0-9.,]/g,'').replace(',','.').replace(/\s/g,''))
+  return isNaN(n) ? NaN : n
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -12,69 +18,77 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
     const { sectors=[], domaines=[], activites=[], cities=[], name='', fields=['basic'], limit=50, capital_min, capital_max } = await request.json()
+    const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
 
-    // Build count query
-    let q = supabaseAdmin.from('companies').select('id,phone_1,email,website,director,ice,annee_creation,capital,address_raw,facebook', { count: 'exact' })
+    // Fetch a sample (up to 500) to estimate coverage
+    let q = supabaseAdmin.from('companies')
+      .select('id,' + Object.values(FIELD_GROUPS).flatMap(f => f.columns).join(','))
 
-    const hasNomen = sectors.length || domaines.length || activites.length
-    if (hasNomen) {
+    if (sectors.length || domaines.length || activites.length) {
       const parts: string[] = []
-      if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map((s: string) => `"${s}"`).join(',')})`)
-      if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map((s: string) => `"${s}"`).join(',')})`)
-      if (activites.length) parts.push(`primary_activite.in.(${activites.map((s: string) => `"${s}"`).join(',')})`)
+      if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map((s:string)=>`"${s}"`).join(',')})`)
+      if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map((s:string)=>`"${s}"`).join(',')})`)
+      if (activites.length) parts.push(`primary_activite.in.(${activites.map((s:string)=>`"${s}"`).join(',')})`)
       q = q.or(parts.join(','))
     }
     if (cities.length) q = q.in('city', cities)
     if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
-    if (capital_min)   q = q.gte('capital', String(capital_min))
-    if (capital_max)   q = q.lte('capital', String(capital_max))
 
-    const { data: sample, count } = await q.limit(Math.min(limit * 2, 500))
-    const totalCount = count ?? 0
+    const { data: sample, count } = await (q as ReturnType<typeof q.select>).select('id,' + Object.values(FIELD_GROUPS).flatMap(f => f.columns).join(','), { count: 'exact' }).limit(500)
+    let sampleData = (sample ?? []) as Record<string,unknown>[]
+
+    // Apply capital filter in-memory
+    if (capital_min || capital_max) {
+      const min = capital_min ? parseFloat(capital_min) : null
+      const max = capital_max ? parseFloat(capital_max) : null
+      sampleData = sampleData.filter(c => {
+        const cap = parseCapital(c.capital)
+        if (isNaN(cap)) return false
+        if (min !== null && cap < min) return false
+        if (max !== null && cap > max) return false
+        return true
+      })
+    }
+
+    const totalCount = Math.max(count ?? 0, sampleData.length)
     const actualLimit = Math.min(limit, totalCount, 10000)
 
-    // Estimate smart cost: sample N companies and extrapolate field coverage
-    const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
-    const sampleCompanies = (sample ?? []) as Record<string, unknown>[]
-
+    // Calculate field coverage + estimated cost from sample
     const fieldCoverage: Record<string, number> = {}
+    const fieldCounts: Record<string, number> = {}
     for (const field of allFields) {
-      const cols = FIELD_GROUPS[field as FieldGroupId]?.columns ?? []
-      const covered = sampleCompanies.filter(c => cols.some(col => c[col] != null && c[col] !== '')).length
-      fieldCoverage[field] = sampleCompanies.length > 0 ? covered / sampleCompanies.length : 0.7 // default 70%
+      const cols = FIELD_GROUPS[field]?.columns ?? []
+      const covered = sampleData.filter(c => cols.some(col => c[col] != null && c[col] !== '')).length
+      const rate = sampleData.length > 0 ? covered / sampleData.length : 0.7
+      fieldCoverage[field] = Math.round(rate * 100)
+      fieldCounts[field] = Math.round(rate * actualLimit)
     }
 
-    // Estimated cost = for each field: coverage_rate × count × field_cost
     let estimatedCost = 0
-    const costByField: Record<string, number> = {}
     for (const field of allFields) {
-      const coverage = fieldCoverage[field] ?? 0.7
-      const fieldCost = FIELD_GROUPS[field as FieldGroupId]?.cost ?? 0
-      const est = Math.round(coverage * actualLimit * fieldCost)
-      costByField[field] = est
-      estimatedCost += est
+      const rate = fieldCoverage[field] / 100
+      estimatedCost += Math.round(rate * actualLimit * (FIELD_GROUPS[field as FieldGroupId]?.cost ?? 0))
     }
 
-    // Check user balance
-    const { data: profile } = await supabaseAdmin.from('profiles').select('credit_balance,free_trial_used').eq('id', user.id).single()
+    const { data: profile } = await supabaseAdmin.from('profiles')
+      .select('credit_balance,free_trial_used').eq('id', user.id).single()
     const balance = profile?.credit_balance ?? 0
     const trialUsed = profile?.free_trial_used ?? false
     const isBasicOnly = allFields.length === 1 && allFields[0] === 'basic'
     const freeTrialEligible = !trialUsed && isBasicOnly && actualLimit <= 100
 
-    if (freeTrialEligible) estimatedCost = 0
-
     return NextResponse.json({
       count: totalCount,
       actualLimit,
-      estimatedCost,
-      costByField,
+      estimatedCost: freeTrialEligible ? 0 : estimatedCost,
       fieldCoverage,
+      fieldCounts,
       canAfford: balance >= estimatedCost || freeTrialEligible,
       balance,
       freeTrialEligible,
     })
   } catch (e) {
+    console.error('Estimate error:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

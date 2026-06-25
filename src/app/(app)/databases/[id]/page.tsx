@@ -173,6 +173,8 @@ export default function DatabaseDetailPage() {
   const [data, setData]         = useState<{ query: Record<string,unknown>; companies: Company[]; fields: string[] }|null>(null)
   const [loading, setLoading]   = useState(true)
   const [injecting, setInjecting]   = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const PER_PAGE = 50
   const [injectingId, setInjectingId] = useState<string|null>(null)
   const [balance, setBalance]   = useState<number|null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -261,10 +263,13 @@ export default function DatabaseDetailPage() {
     else setSelected(new Set(data.companies.map(c=>c.id)))
   }
 
+  const { query, companies, fields } = data ?? { query: {}, companies: [], fields: [] }
+  const totalPages = Math.ceil(companies.length / PER_PAGE)
+  const pagedCompanies = companies.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE)
+
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 className="w-7 h-7 text-indigo-600 animate-spin"/></div>
   if (!data) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">Recherche introuvable</div>
 
-  const { query, companies, fields } = data
   const allSelected = selected.size === companies.length && companies.length > 0
 
   return (
