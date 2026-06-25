@@ -35,16 +35,21 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
     const body = await request.json()
-    const { sectors = [], domaines = [], activites = [], cities = [], name = '', fields = ['phone','email'], limit = 50 } = body
+    const {
+      sectors = [], domaines = [], activites = [],
+      cities = [], name = '',
+      fields = ['phone', 'email'],
+      limit = 50,
+    } = body
+
     if (!fields.length) return NextResponse.json({ error: 'Sélectionnez au moins un champ' }, { status: 400 })
 
-    // Fetch matching companies
+    // ── Fetch matching companies ─────────────────────────────
     let q = supabaseAdmin.from('companies').select(
       'id,name,city,annee_creation,forme_juridique,primary_sector,primary_domaine,primary_activite,activities,' +
       'phone_1,phone_2,email,website,director,ice,rc,capital,address_raw,latitude,longitude,' +
       'facebook,instagram,linkedin,youtube,description,rating,review_count,is_recommended,logo_url'
     )
-
     const hasNomen = sectors.length || domaines.length || activites.length
     if (hasNomen) {
       const parts: string[] = []
@@ -60,20 +65,21 @@ export async function POST(request: NextRequest) {
     if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
 
     const companies = (rawCompanies ?? []) as Record<string, unknown>[]
-    // Sort best data first
+    // Sort: companies with most data for selected fields come first
     companies.sort((a, b) => completenessScore(b, fields) - completenessScore(a, fields))
     const selected = companies.slice(0, limit)
-    if (!selected.length) return NextResponse.json({ error: 'Aucune entreprise trouvée avec ces critères' }, { status: 404 })
+    if (!selected.length) return NextResponse.json({ error: 'Aucune entreprise trouvée' }, { status: 404 })
 
     const companyIds = selected.map(c => c.id as string)
 
-    // Check existing unlocks
+    // ── Check existing unlocks ───────────────────────────────
     const { data: existingUnlocks } = await supabaseAdmin
-      .from('company_unlocks').select('company_id,fields').eq('user_id', user.id).in('company_id', companyIds)
+      .from('company_unlocks').select('company_id,fields')
+      .eq('user_id', user.id).in('company_id', companyIds)
     const unlockMap: Record<string, string[]> = {}
     for (const u of existingUnlocks ?? []) unlockMap[u.company_id] = (u.fields as string[]) ?? []
 
-    // Calculate cost
+    // ── Calculate cost ────────────────────────────────────────
     let totalCost = 0
     for (const company of selected) {
       const cid = company.id as string
@@ -82,7 +88,7 @@ export async function POST(request: NextRequest) {
       totalCost += costPerCompany(newFields)
     }
 
-    // Check balance
+    // ── Check balance ─────────────────────────────────────────
     const { data: profile } = await supabaseAdmin
       .from('profiles').select('credit_balance').eq('id', user.id).single()
     const balance = profile?.credit_balance ?? 0
@@ -93,57 +99,50 @@ export async function POST(request: NextRequest) {
       }, { status: 402 })
     }
 
-    // ── STEP 1: Create query record FIRST to get query_id ──
+    // ── Deduct credits ────────────────────────────────────────
+    if (totalCost > 0) {
+      await supabaseAdmin.from('profiles')
+        .update({ credit_balance: balance - totalCost }).eq('id', user.id)
+      await supabaseAdmin.from('credit_transactions').insert({
+        user_id: user.id, amount: -totalCost,
+        balance_after: balance - totalCost, type: 'unlock',
+        description: `${selected.length} entreprises · champs: ${fields.join(', ')}`,
+      })
+    }
+
+    // ── Save company_unlocks (no query_id here — just track unlocks) ──
+    const unlockRows = selected.map(company => {
+      const cid = company.id as string
+      const existing = unlockMap[cid] ?? []
+      const merged = [...new Set([...existing, ...fields])]
+      return { user_id: user.id, company_id: cid, credits_spent: costPerCompany(fields), fields: merged }
+    })
+    await supabaseAdmin.from('company_unlocks')
+      .upsert(unlockRows, { onConflict: 'user_id,company_id' })
+
+    // ── Save query WITH company_ids array ─────────────────────
+    // This is the source of truth for "which companies are in this search"
     const { data: queryRecord, error: queryErr } = await supabaseAdmin.from('queries').insert({
       user_id:          user.id,
       filters:          { sectors, domaines, activites, cities, name },
       fields_requested: fields,
       result_count:     selected.length,
       credits_spent:    totalCost,
+      company_ids:      companyIds,   // ← Store the actual company IDs
       query_name:       null,
     }).select().single()
 
     if (queryErr) {
       console.error('Query insert error:', queryErr)
-      return NextResponse.json({ error: 'Erreur création recherche: ' + queryErr.message }, { status: 500 })
-    }
-    const queryId = queryRecord.id
-
-    // ── STEP 2: Deduct credits ──
-    if (totalCost > 0) {
-      await supabaseAdmin.from('profiles')
-        .update({ credit_balance: balance - totalCost }).eq('id', user.id)
-      await supabaseAdmin.from('credit_transactions').insert({
-        user_id:      user.id,
-        amount:       -totalCost,
-        balance_after: balance - totalCost,
-        type:         'unlock',
-        description:  `Recherche ${queryId.slice(0,8)}: ${selected.length} entreprises, champs: ${fields.join(', ')}`,
+      // Non-blocking: unlocks already done, just return success without queryId
+      return NextResponse.json({
+        queryId: null, companiesUnlocked: selected.length,
+        creditsSpent: totalCost, newBalance: balance - totalCost,
       })
     }
 
-    // ── STEP 3: Upsert company_unlocks WITH query_id ──
-    const unlockRows = selected.map(company => {
-      const cid = company.id as string
-      const existing = unlockMap[cid] ?? []
-      const merged = [...new Set([...existing, ...fields])]
-      return {
-        user_id:       user.id,
-        company_id:    cid,
-        query_id:      queryId,   // ← KEY: link to this specific search
-        credits_spent: costPerCompany(fields),
-        fields:        merged,
-      }
-    })
-
-    const { error: unlockErr } = await supabaseAdmin
-      .from('company_unlocks')
-      .upsert(unlockRows, { onConflict: 'user_id,company_id' })
-
-    if (unlockErr) console.error('Unlock upsert error (non-blocking):', unlockErr)
-
     return NextResponse.json({
-      queryId,
+      queryId:           queryRecord.id,
       companiesUnlocked: selected.length,
       creditsSpent:      totalCost,
       newBalance:        balance - totalCost,
