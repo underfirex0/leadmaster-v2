@@ -142,14 +142,13 @@ export async function POST(request: NextRequest) {
     await supabaseAdmin.from('company_unlocks')
       .upsert(unlockRows, { onConflict: 'user_id,company_id' })
 
-    // ── Save query WITH company_ids ───────────────────────────
+    // ── Save query — store company_ids inside filters JSONB (no migration needed) ──
     const { data: queryRecord, error: qErr } = await supabaseAdmin.from('queries').insert({
       user_id:          user.id,
-      filters:          { sectors, domaines, activites, cities, name, capital_min, capital_max },
+      filters:          { sectors, domaines, activites, cities, name, capital_min, capital_max, _company_ids: companyIds },
       fields_requested: allFields,
       result_count:     selected.length,
       credits_spent:    totalCost,
-      company_ids:      companyIds,
     }).select().single()
 
     if (qErr) console.error('Query save error (non-blocking):', qErr)

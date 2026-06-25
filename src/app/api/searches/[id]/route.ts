@@ -14,38 +14,45 @@ export async function GET(req: NextRequest, { params }: Params) {
       .from('queries').select('*').eq('id', params.id).eq('user_id', user.id).single()
     if (!query) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
 
-    const storedIds = (query.company_ids as string[] | null) ?? []
-    const fields    = (query.fields_requested as string[]) ?? []
+    const fields = (query.fields_requested as string[]) ?? []
 
-    let companyIds: string[] = storedIds
+    // ── Get company IDs — try all possible storage locations ──
+    const filters = (query.filters as Record<string, unknown>) ?? {}
 
-    // ── Fallback for old searches (no company_ids stored) ─────
-    // Use company_unlocks ordered by unlock time near query creation
-    if (!companyIds.length) {
-      const queryCreatedAt = query.created_at as string
-      const windowStart = new Date(new Date(queryCreatedAt).getTime() - 5 * 60_000).toISOString() // 5 min before
-      const windowEnd   = new Date(new Date(queryCreatedAt).getTime() + 5 * 60_000).toISOString() // 5 min after
+    let companyIds: string[] =
+      // 1. New format: stored in filters._company_ids
+      (filters._company_ids as string[] | undefined) ??
+      // 2. Old format: stored in separate company_ids column (if migration was run)
+      ((query as Record<string, unknown>).company_ids as string[] | undefined) ??
+      []
+
+    // ── Fallback: find unlocks created around the same time as this query ──
+    if (!companyIds.length && (query.result_count ?? 0) > 0) {
+      const createdAt = new Date(query.created_at as string)
+      const windowStart = new Date(createdAt.getTime() - 10 * 60_000).toISOString() // 10 min before
+      const windowEnd   = new Date(createdAt.getTime() + 2  * 60_000).toISOString() // 2 min after
 
       const { data: nearUnlocks } = await supabaseAdmin
         .from('company_unlocks')
-        .select('company_id')
+        .select('company_id, unlocked_at')
         .eq('user_id', user.id)
         .gte('unlocked_at', windowStart)
         .lte('unlocked_at', windowEnd)
-        .limit(query.result_count ?? 10000)
+        .order('unlocked_at', { ascending: false })
+        .limit(query.result_count as number ?? 10000)
 
-      companyIds = (nearUnlocks ?? []).map(u => u.company_id)
+      companyIds = (nearUnlocks ?? []).map(u => u.company_id as string)
+    }
 
-      // If still nothing, get the latest N unlocks
-      if (!companyIds.length && (query.result_count ?? 0) > 0) {
-        const { data: latestUnlocks } = await supabaseAdmin
-          .from('company_unlocks')
-          .select('company_id')
-          .eq('user_id', user.id)
-          .order('unlocked_at', { ascending: false })
-          .limit(query.result_count ?? 100)
-        companyIds = (latestUnlocks ?? []).map(u => u.company_id)
-      }
+    // ── Last resort: latest N unlocks ────────────────────────
+    if (!companyIds.length && (query.result_count ?? 0) > 0) {
+      const { data: latest } = await supabaseAdmin
+        .from('company_unlocks')
+        .select('company_id')
+        .eq('user_id', user.id)
+        .order('unlocked_at', { ascending: false })
+        .limit(query.result_count as number ?? 100)
+      companyIds = (latest ?? []).map(u => u.company_id as string)
     }
 
     if (!companyIds.length) return NextResponse.json({ query, companies: [], fields })
@@ -56,23 +63,19 @@ export async function GET(req: NextRequest, { params }: Params) {
       .select('id,name,city,annee_creation,primary_sector,primary_domaine,primary_activite,activities,forme_juridique,phone_1,phone_2,email,website,director,ice,rc,capital,address_raw,latitude,longitude,facebook,instagram,linkedin,youtube,logo_url,description,rating')
       .in('id', companyIds)
 
-    // ── Fetch unlock info ─────────────────────────────────────
+    // ── Fetch unlock info + backward compat ───────────────────
     const { data: unlocks } = await supabaseAdmin
       .from('company_unlocks').select('company_id,fields')
       .eq('user_id', user.id).in('company_id', companyIds)
     const unlockMap: Record<string, string[]> = {}
     for (const u of unlocks ?? []) unlockMap[u.company_id] = (u.fields as string[]) ?? []
 
-    const enriched = (companies ?? []).map(c => ({
-      ...c,
-      // Backward compat: if has OLD fields (phone,email etc) but no 'basic',
-      // treat as if 'basic' is also unlocked
-      unlocked_fields: (() => {
-        const uf = unlockMap[c.id] ?? []
-        if (uf.length > 0 && !uf.includes('basic')) return [...uf, 'basic']
-        return uf
-      })(),
-    }))
+    const enriched = (companies ?? []).map(c => {
+      const uf = unlockMap[c.id] ?? []
+      // Backward compat: old unlocks don't have 'basic' — treat as if they do
+      const unlockedFields = uf.length > 0 && !uf.includes('basic') ? [...uf, 'basic'] : uf
+      return { ...c, unlocked_fields: unlockedFields }
+    })
 
     return NextResponse.json({ query, companies: enriched, fields })
   } catch (e) {
