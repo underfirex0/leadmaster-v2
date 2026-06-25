@@ -86,3 +86,8 @@ export const FIELD_COSTS: Record<string, number> = {
   basic:1, phone:1, email:1, address:1, website:1, ice:2, annee_creation:2, director:2, capital:5,
 }
 export const FREE_FIELDS: string[] = []
+
+// ── Legacy exports (used by old API routes) ───────────────────
+export const PAGE_SIZE = 30
+export const MAX_RESULTS = 500
+export const UNLOCK_COST_PER_COMPANY = 1
