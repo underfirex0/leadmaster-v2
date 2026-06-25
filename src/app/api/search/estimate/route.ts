@@ -5,13 +5,14 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { FIELD_GROUPS } from '@/lib/constants'
 import type { FieldGroupId } from '@/lib/constants'
 
+// Robust capital parser — handles "100 000", "100,000", "100000 MAD", etc.
 function parseCapital(val: unknown): number {
   if (!val) return NaN
-  const n = parseFloat(String(val).replace(/[^0-9.,]/g,'').replace(',','.').replace(/\s/g,''))
+  const n = parseFloat(String(val).replace(/[^0-9.,]/g, '').replace(',', '.').replace(/\s/g, ''))
   return isNaN(n) ? NaN : n
 }
 
-// Helper to apply shared filters to any query builder
+// Apply the same filter conditions to any Supabase query builder
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyFilters(q: any, { sectors, domaines, activites, cities, name }: {
   sectors: string[]; domaines: string[]; activites: string[]; cities: string[]; name: string
@@ -36,55 +37,63 @@ export async function POST(request: NextRequest) {
 
     const {
       sectors=[], domaines=[], activites=[], cities=[], name='',
-      fields=['basic'], limit=50, capital_min, capital_max
+      fields=['basic'], limit=50, capital_min, capital_max,
     } = await request.json()
 
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
     const dataColumns = 'id,' + Object.values(FIELD_GROUPS).flatMap(f => f.columns).join(',')
-    const filterArgs = { sectors, domaines, activites, cities, name }
+    const filterArgs  = { sectors, domaines, activites, cities, name }
 
-    // ── 1. Exact total count (head:true = no data returned, just count) ──
-    const countQ = applyFilters(
+    // ── 1. Exact DB count (before capital filter — capital is TEXT, filtered in-memory) ──
+    const { count: exactCount } = await applyFilters(
       supabaseAdmin.from('companies').select('*', { count: 'exact', head: true }),
       filterArgs
     )
-    const { count: exactCount } = await countQ
 
-    // ── 2. Sample data for field-coverage estimation (max 500 rows) ──
-    const dataQ = applyFilters(
+    // ── 2. Sample (max 500 rows) for field coverage + capital ratio ──
+    const { data: rawSample } = await applyFilters(
       supabaseAdmin.from('companies').select(dataColumns),
       filterArgs
-    )
-    const { data: rawSample } = await dataQ.limit(500)
-    let sampleData = (rawSample ?? []) as Record<string,unknown>[]
+    ).limit(500)
 
-    // Apply capital filter in-memory (capital column is TEXT)
+    const rawSampleData = (rawSample ?? []) as Record<string, unknown>[]
+    let sampleData = rawSampleData
+
+    // ── 3. Capital in-memory filter + ratio estimation ──
+    let capitalRatio = 1.0
     if (capital_min || capital_max) {
       const min = capital_min ? parseFloat(capital_min) : null
       const max = capital_max ? parseFloat(capital_max) : null
-      sampleData = sampleData.filter(c => {
+
+      sampleData = rawSampleData.filter(c => {
         const cap = parseCapital(c.capital)
-        if (isNaN(cap)) return false
+        if (isNaN(cap)) return false                       // exclude companies with no/invalid capital
         if (min !== null && cap < min) return false
         if (max !== null && cap > max) return false
         return true
       })
+
+      // Ratio of sample that passed the capital filter → apply to full DB count
+      capitalRatio = rawSampleData.length > 0
+        ? sampleData.length / rawSampleData.length
+        : 0
     }
 
-    // Use exact count from DB; fall back to sample length only if count failed
-    const totalCount = exactCount ?? sampleData.length
+    // ── 4. Total count — DB count × capital ratio ──
+    const dbCount    = exactCount ?? rawSampleData.length
+    const totalCount = Math.round(dbCount * capitalRatio)
     const actualLimit = Math.min(limit, totalCount, 10000)
 
-    // ── 3. Field coverage + estimated cost from sample ──
+    // ── 5. Field coverage + estimated cost (from capital-filtered sample) ──
     const fieldCoverage: Record<string, number> = {}
-    const fieldCounts: Record<string, number> = {}
+    const fieldCounts:   Record<string, number> = {}
 
     for (const field of allFields) {
       const cols = FIELD_GROUPS[field]?.columns ?? []
       const covered = sampleData.filter(c => cols.some(col => c[col] != null && c[col] !== '')).length
       const rate = sampleData.length > 0 ? covered / sampleData.length : 0.7
       fieldCoverage[field] = Math.round(rate * 100)
-      fieldCounts[field] = Math.round(rate * actualLimit)
+      fieldCounts[field]   = Math.round(rate * actualLimit)
     }
 
     let estimatedCost = 0
@@ -93,21 +102,21 @@ export async function POST(request: NextRequest) {
       estimatedCost += Math.round(rate * actualLimit * (FIELD_GROUPS[field as FieldGroupId]?.cost ?? 0))
     }
 
-    // ── 4. User balance + free trial check ──
+    // ── 6. User balance + free trial ──
     const { data: profile } = await supabaseAdmin.from('profiles')
       .select('credit_balance,free_trial_used').eq('id', user.id).single()
-    const balance = profile?.credit_balance ?? 0
+    const balance   = profile?.credit_balance ?? 0
     const trialUsed = profile?.free_trial_used ?? false
     const isBasicOnly = allFields.length === 1 && allFields[0] === 'basic'
     const freeTrialEligible = !trialUsed && isBasicOnly && actualLimit <= 100
 
     return NextResponse.json({
-      count: totalCount,
+      count:          totalCount,
       actualLimit,
-      estimatedCost: freeTrialEligible ? 0 : estimatedCost,
+      estimatedCost:  freeTrialEligible ? 0 : estimatedCost,
       fieldCoverage,
       fieldCounts,
-      canAfford: balance >= estimatedCost || freeTrialEligible,
+      canAfford:      balance >= estimatedCost || freeTrialEligible,
       balance,
       freeTrialEligible,
     })

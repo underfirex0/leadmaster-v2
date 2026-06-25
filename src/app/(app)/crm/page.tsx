@@ -44,6 +44,13 @@ function timeAgo(d:string) {
   if (h < 24) return `il y a ${h}h`
   return `il y a ${Math.floor(h / 24)}j`
 }
+
+// Capital is stored as TEXT — "100 000", "100,000 MAD", etc.
+function formatCapital(val: string | null | undefined): string {
+  if (!val) return '—'
+  const n = parseFloat(String(val).replace(/[^0-9.,]/g, '').replace(',', '.').replace(/\s/g, ''))
+  return isNaN(n) ? val : n.toLocaleString('fr-FR') + ' MAD'
+}
 function initials(n:string) {
   return (n||'?').split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()
 }
@@ -133,7 +140,7 @@ function FieldRow({ lead, field, label, icon: Icon, value, onUnlock }: {
         {field === 'phone'    ? <a href={`tel:${value}`}    className="text-[12.5px] font-mono text-gray-800 hover:text-indigo-600 truncate">{value}</a>
         : field === 'email'   ? <a href={`mailto:${value}`} className="text-[12.5px] text-gray-700 hover:text-indigo-600 truncate">{value}</a>
         : field === 'website' ? <a href={value} target="_blank" rel="noopener noreferrer" className="text-[12.5px] text-indigo-600 hover:underline truncate">{value.replace(/^https?:\/\//,'')}</a>
-        : field === 'capital' ? <span className="text-[12.5px] text-gray-700">{Number(value).toLocaleString('fr-FR')} MAD</span>
+        : field === 'capital' ? <span className="text-[12.5px] text-gray-700">{formatCapital(value)}</span>
         :                       <span className="text-[12.5px] text-gray-700 truncate">{value}</span>}
       </div>
     )

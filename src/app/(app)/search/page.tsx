@@ -228,7 +228,8 @@ export default function SearchPage() {
     fieldCoverage:Record<string,number>;fieldCounts:Record<string,number>;freeTrialEligible:boolean
   }|null>(null)
   const [toast, setToast] = useState<{msg:string;type:'error'|'success'}|null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout>|null>(null)
+  const debounceRef    = useRef<ReturnType<typeof setTimeout>|null>(null)
+  const nomDebounceRef = useRef<ReturnType<typeof setTimeout>|null>(null)
   const cityRef = useRef<HTMLDivElement>(null)
 
   // Capital tranche values
@@ -245,13 +246,32 @@ export default function SearchPage() {
   const [capitalMin, capitalMax] = TRANCHES[capitalTranche] ?? ['','']
 
   useEffect(() => {
-    fetch('/api/nomenclature').then(r=>r.json()).then(d=>{setTree(d);setLoadingTree(false)}).catch(()=>setLoadingTree(false))
     fetch('/api/me/balance').then(r=>r.json()).then(d=>setBalance(d.balance))
     fetch('/api/search/cities').then(r=>r.json()).then(d=>setAllCities(d.cities??[]))
     // Check free trial
     fetch('/api/search/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:['basic'],limit:100})})
       .then(r=>r.json()).then(d=>setFreeTrialAvail(d.freeTrialEligible??false))
   }, [])
+
+  // Nomenclature tree — refetches with city/name filters so sector counts update live
+  useEffect(() => {
+    if (nomDebounceRef.current) clearTimeout(nomDebounceRef.current)
+    setLoadingTree(true)
+    // Name filter uses 600ms debounce; city/reset changes are instant
+    const delay = nameSearch ? 600 : 0
+    nomDebounceRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams()
+        if (cities.length)        params.set('cities', cities.join(','))
+        if (nameSearch.trim())    params.set('name',   nameSearch.trim())
+        const r = await fetch(`/api/nomenclature?${params}`)
+        const d = await r.json()
+        setTree(d)
+      } catch { /* silent */ }
+      finally { setLoadingTree(false) }
+    }, delay)
+    return () => { if (nomDebounceRef.current) clearTimeout(nomDebounceRef.current) }
+  }, [cities, nameSearch])
 
   // Close city dropdown on outside click
   useEffect(() => {

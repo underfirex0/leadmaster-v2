@@ -26,6 +26,13 @@ const FIELD_LABELS: Record<string, string> = {
   ice:'ICE', annee_creation:'Année création', capital:'Capital social', address:'Adresse',
 }
 
+// Capital is stored as TEXT — handle "100 000", "100,000", "100000 MAD", etc.
+function formatCapital(val: string | null | undefined): string {
+  if (!val) return '—'
+  const n = parseFloat(String(val).replace(/[^0-9.,]/g, '').replace(',', '.').replace(/\s/g, ''))
+  return isNaN(n) ? val : n.toLocaleString('fr-FR') + ' MAD'
+}
+
 // ── Single field cell ──────────────────────────────────────────
 function FieldCell({ company, fieldId, onUnlock }: {
   company: Company; fieldId: FieldGroupId
@@ -71,7 +78,7 @@ function FieldCell({ company, fieldId, onUnlock }: {
                 <ExternalLink className="w-2.5 h-2.5 shrink-0 opacity-50"/>
               </a>
             ) : fieldId === 'capital' ? (
-              <span className="text-gray-800 font-medium">{Number(value).toLocaleString('fr-FR')} MAD</span>
+              <span className="text-gray-800 font-medium">{formatCapital(value)}</span>
             ) : (
               <span className="text-gray-800 truncate">{value}</span>
             )}
