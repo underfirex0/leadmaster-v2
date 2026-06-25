@@ -4,6 +4,24 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 type P = { params: { id: string } }
 
+const BATCH = 500
+
+// Paginate any query using .range() to bypass Supabase's 1000 row cap
+async function fetchAllWithRange(
+  buildQuery: (offset: number, end: number) => ReturnType<typeof supabaseAdmin.from>
+): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await buildQuery(offset, offset + BATCH - 1) as unknown as { data: Record<string,unknown>[] | null, error: unknown }
+    if (error || !data?.length) break
+    all.push(...data)
+    if (data.length < BATCH) break
+    offset += BATCH
+  }
+  return all
+}
+
 export async function GET(req: NextRequest, { params }: P) {
   try {
     const supabase = createClient()
@@ -16,80 +34,82 @@ export async function GET(req: NextRequest, { params }: P) {
 
     const fields = (query.fields_requested as string[]) ?? []
 
-    // ── PRIMARY: Get company IDs via query_id on company_unlocks ──
-    // This is the most reliable method — works for any number of companies
-    const { data: unlocksByQuery, error: unlockErr } = await supabaseAdmin
-      .from('company_unlocks')
-      .select('company_id, fields')
-      .eq('user_id', user.id)
-      .eq('query_id', params.id)
-      .limit(10000)
+    // ── PRIMARY: Paginate company_unlocks by query_id ─────────
+    const unlockRows = await fetchAllWithRange((offset, end) =>
+      supabaseAdmin
+        .from('company_unlocks')
+        .select('company_id,fields')
+        .eq('user_id', user.id)
+        .eq('query_id', params.id)
+        .range(offset, end)
+        .order('unlocked_at')
+    )
 
-    let companyIds: string[] = []
     const unlockFieldsMap: Record<string, string[]> = {}
+    let companyIds: string[] = []
 
-    if (!unlockErr && unlocksByQuery?.length) {
-      // Found unlocks linked to this query ✅
-      for (const u of unlocksByQuery) {
-        companyIds.push(u.company_id)
-        unlockFieldsMap[u.company_id] = (u.fields as string[]) ?? []
+    if (unlockRows.length) {
+      for (const u of unlockRows) {
+        companyIds.push(u.company_id as string)
+        unlockFieldsMap[u.company_id as string] = (u.fields as string[]) ?? []
       }
     } else {
-      // ── FALLBACK 1: Time window around query creation ─────
+      // ── FALLBACK: Time-window around query creation ───────────
       const createdAt = new Date(query.created_at as string)
       const windowStart = new Date(createdAt.getTime() - 10 * 60_000).toISOString()
       const windowEnd   = new Date(createdAt.getTime() + 5  * 60_000).toISOString()
 
-      const { data: timeUnlocks } = await supabaseAdmin
-        .from('company_unlocks')
-        .select('company_id, fields, unlocked_at')
-        .eq('user_id', user.id)
-        .gte('unlocked_at', windowStart)
-        .lte('unlocked_at', windowEnd)
-        .limit(query.result_count as number ?? 10000)
+      const timeUnlocks = await fetchAllWithRange((offset, end) =>
+        supabaseAdmin
+          .from('company_unlocks')
+          .select('company_id,fields')
+          .eq('user_id', user.id)
+          .gte('unlocked_at', windowStart)
+          .lte('unlocked_at', windowEnd)
+          .range(offset, end)
+          .order('unlocked_at')
+      )
 
-      if (timeUnlocks?.length) {
+      if (timeUnlocks.length) {
         for (const u of timeUnlocks) {
-          companyIds.push(u.company_id)
-          unlockFieldsMap[u.company_id] = (u.fields as string[]) ?? []
+          companyIds.push(u.company_id as string)
+          unlockFieldsMap[u.company_id as string] = (u.fields as string[]) ?? []
         }
       } else {
-        // ── FALLBACK 2: Latest N unlocks ──────────────────────
-        const { data: latestUnlocks } = await supabaseAdmin
-          .from('company_unlocks')
-          .select('company_id, fields')
-          .eq('user_id', user.id)
-          .order('unlocked_at', { ascending: false })
-          .limit(query.result_count as number ?? 100)
-
-        for (const u of latestUnlocks ?? []) {
-          companyIds.push(u.company_id)
-          unlockFieldsMap[u.company_id] = (u.fields as string[]) ?? []
+        // Last resort: latest N by result_count
+        const latestUnlocks = await fetchAllWithRange((offset, end) =>
+          supabaseAdmin
+            .from('company_unlocks')
+            .select('company_id,fields')
+            .eq('user_id', user.id)
+            .order('unlocked_at', { ascending: false })
+            .range(offset, Math.min(end, (query.result_count as number ?? 100) - 1))
+        )
+        for (const u of latestUnlocks) {
+          companyIds.push(u.company_id as string)
+          unlockFieldsMap[u.company_id as string] = (u.fields as string[]) ?? []
         }
       }
     }
 
     if (!companyIds.length) return NextResponse.json({ query, companies: [], fields })
 
-    // ── Fetch companies in chunks (handles >1000 safely) ────
-    const allCompanies: Record<string,unknown>[] = []
-    const chunkSize = 500
-    for (let i = 0; i < companyIds.length; i += chunkSize) {
-      const chunk = companyIds.slice(i, i + chunkSize)
-      const { data, error: cErr } = await supabaseAdmin
+    // ── Fetch companies in chunks of 500 ──────────────────────
+    const allCompanies: Record<string, unknown>[] = []
+    for (let i = 0; i < companyIds.length; i += BATCH) {
+      const chunk = companyIds.slice(i, i + BATCH)
+      const { data, error } = await supabaseAdmin
         .from('companies')
         .select('id,name,city,annee_creation,primary_sector,primary_domaine,primary_activite,activities,forme_juridique,phone_1,phone_2,email,website,director,ice,rc,capital,address_raw,latitude,longitude,facebook,instagram,linkedin,youtube,logo_url,description,rating')
         .in('id', chunk)
-        .limit(chunkSize)
-      if (cErr) { console.error('Companies fetch error:', cErr); continue }
+        .limit(BATCH)
+      if (error) { console.error('Companies fetch error:', error); continue }
       allCompanies.push(...(data ?? []))
     }
 
-    // ── Enrich with unlocked_fields ──────────────────────────
+    // ── Enrich with unlocked_fields ───────────────────────────
     const enriched = allCompanies.map(c => {
-      const cid = c.id as string
-      let uf = unlockFieldsMap[cid] ?? []
-      // Backward compat: old unlocks without 'basic' → treat as having basic
+      let uf = unlockFieldsMap[c.id as string] ?? []
       if (uf.length > 0 && !uf.includes('basic')) uf = [...uf, 'basic']
       return { ...c, unlocked_fields: uf }
     })
