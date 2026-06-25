@@ -12,8 +12,62 @@ const FIELD_COL = Object.fromEntries(
 function hasData(c: Record<string,unknown>, field: string) {
   return (FIELD_COL[field] ?? []).some(col => c[col] != null && c[col] !== '')
 }
-function completeness(c: Record<string,unknown>, fields: string[]) {
+
+// Completeness score: how many of the selected fields does this company have
+function completeness(c: Record<string,unknown>, fields: string[]): number {
   return fields.reduce((s,f) => s + (hasData(c,f) ? 1 : 0), 0)
+}
+
+// Fetch all matching companies in batches of 1000 (Supabase row limit)
+async function fetchAllMatching(
+  baseFilters: {
+    sectors: string[], domaines: string[], activites: string[],
+    cities: string[], name: string, capital_min?: string, capital_max?: string
+  },
+  maxRows: number
+): Promise<Record<string,unknown>[]> {
+  const BATCH = 1000
+  const all: Record<string,unknown>[] = []
+
+  // We fetch up to maxRows * 2 to have better candidates for completeness sorting
+  // but cap at 20k to avoid excessive DB calls
+  const fetchTarget = Math.min(maxRows * 2, 20000)
+
+  for (let offset = 0; offset < fetchTarget; offset += BATCH) {
+    // Build fresh query each batch (Supabase query objects aren't reusable with range)
+    let q = supabaseAdmin
+      .from('companies')
+      .select('id,name,city,annee_creation,forme_juridique,primary_sector,primary_domaine,' +
+        'primary_activite,activities,phone_1,phone_2,email,website,director,' +
+        'ice,rc,capital,address_raw,latitude,longitude,facebook,instagram,linkedin,' +
+        'youtube,description,rating,logo_url')
+
+    const { sectors, domaines, activites, cities, name, capital_min, capital_max } = baseFilters
+
+    if (sectors.length || domaines.length || activites.length) {
+      const parts: string[] = []
+      if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map((s:string)=>`"${s}"`).join(',')})`)
+      if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map((s:string)=>`"${s}"`).join(',')})`)
+      if (activites.length) parts.push(`primary_activite.in.(${activites.map((s:string)=>`"${s}"`).join(',')})`)
+      q = q.or(parts.join(','))
+    }
+    if (cities.length) q = q.in('city', cities)
+    if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
+    if (capital_min && capital_min !== '') q = q.gte('capital', capital_min)
+    if (capital_max && capital_max !== '') q = q.lte('capital', capital_max)
+
+    const { data: batch, error } = await q
+      .range(offset, offset + BATCH - 1)
+      .order('name')  // consistent ordering for pagination
+
+    if (error) { console.error(`Batch ${offset} error:`, error); break }
+    if (!batch?.length) break
+    all.push(...batch)
+    if (batch.length < BATCH) break // no more results
+    if (all.length >= fetchTarget) break
+  }
+
+  return all
 }
 
 export async function POST(request: NextRequest) {
@@ -31,49 +85,54 @@ export async function POST(request: NextRequest) {
       capital_min, capital_max,
     } = body
 
-    // Always include basic
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
+    const maxCompanies = Math.min(limit, 10000)
 
-    // ── Fetch companies ──────────────────────────────────────
-    let q = supabaseAdmin.from('companies').select(
-      'id,name,city,annee_creation,forme_juridique,primary_sector,primary_domaine,' +
-      'primary_activite,activities,phone_1,phone_2,email,website,director,' +
-      'ice,rc,capital,address_raw,latitude,longitude,facebook,instagram,linkedin,' +
-      'youtube,description,rating,logo_url'
+    // ── Fetch ALL matching companies in batches ──────────────
+    const allRaw = await fetchAllMatching(
+      { sectors, domaines, activites, cities, name,
+        capital_min: capital_min ? String(capital_min) : undefined,
+        capital_max: capital_max ? String(capital_max) : undefined,
+      },
+      maxCompanies
     )
 
-    if (sectors.length || domaines.length || activites.length) {
-      const parts: string[] = []
-      if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map((s:string)=>`"${s}"`).join(',')})`)
-      if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map((s:string)=>`"${s}"`).join(',')})`)
-      if (activites.length) parts.push(`primary_activite.in.(${activites.map((s:string)=>`"${s}"`).join(',')})`)
-      q = q.or(parts.join(','))
-    }
-    if (cities.length) q = q.in('city', cities)
-    if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
-    if (capital_min && String(capital_min) !== '') q = q.gte('capital', String(capital_min))
-    if (capital_max && String(capital_max) !== '') q = q.lte('capital', String(capital_max))
+    if (!allRaw.length) return NextResponse.json({ error: 'Aucune entreprise trouvée' }, { status: 404 })
 
-    const fetchLimit = Math.min(limit, 10000)
-    const { data: raw, error: fetchErr } = await q.limit(fetchLimit * 3)
-    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
+    // ── Sort by completeness (companies with most data FIRST) ─
+    // Primary: completeness for selected fields (descending)
+    // Secondary: has phone (most important contact field)
+    // Tertiary: has email
+    allRaw.sort((a, b) => {
+      const scoreA = completeness(a, allFields)
+      const scoreB = completeness(b, allFields)
+      if (scoreB !== scoreA) return scoreB - scoreA
+      // Tiebreaker: prefer companies with phone
+      const phoneA = hasData(a, 'phone') ? 1 : 0
+      const phoneB = hasData(b, 'phone') ? 1 : 0
+      if (phoneB !== phoneA) return phoneB - phoneA
+      // Then email
+      const emailA = hasData(a, 'email') ? 1 : 0
+      const emailB = hasData(b, 'email') ? 1 : 0
+      return emailB - emailA
+    })
 
-    const companies = (raw ?? []) as Record<string,unknown>[]
-    // Best data first
-    companies.sort((a,b) => completeness(b,allFields) - completeness(a,allFields))
-    const selected = companies.slice(0, fetchLimit)
-    if (!selected.length) return NextResponse.json({ error: 'Aucune entreprise trouvée' }, { status: 404 })
-
+    const selected = allRaw.slice(0, maxCompanies)
     const companyIds = selected.map(c => c.id as string)
 
     // ── Check existing unlocks ───────────────────────────────
-    const { data: existingUnlocks } = await supabaseAdmin
-      .from('company_unlocks').select('company_id,fields')
-      .eq('user_id', user.id).in('company_id', companyIds).limit(10000)
+    const existingUnlocksAll: {company_id: string; fields: string[]}[] = []
+    for (let i = 0; i < companyIds.length; i += 1000) {
+      const chunk = companyIds.slice(i, i + 1000)
+      const { data } = await supabaseAdmin
+        .from('company_unlocks').select('company_id,fields')
+        .eq('user_id', user.id).in('company_id', chunk)
+      existingUnlocksAll.push(...(data ?? []))
+    }
     const unlockMap: Record<string,string[]> = {}
-    for (const u of existingUnlocks ?? []) unlockMap[u.company_id] = (u.fields as string[]) ?? []
+    for (const u of existingUnlocksAll) unlockMap[u.company_id] = (u.fields as string[]) ?? []
 
-    // ── Smart cost calculation ───────────────────────────────
+    // ── Smart cost: only charge for fields that have data ────
     const { data: profile } = await supabaseAdmin
       .from('profiles').select('credit_balance,free_trial_used').eq('id', user.id).single()
     const balance   = profile?.credit_balance ?? 0
@@ -97,12 +156,12 @@ export async function POST(request: NextRequest) {
 
     if (totalCost > balance) {
       return NextResponse.json({
-        error: `Crédits insuffisants. Coût: ${totalCost.toLocaleString('fr-FR')} cr, solde: ${balance.toLocaleString('fr-FR')} cr`,
+        error: `Crédits insuffisants. Coût estimé: ${totalCost.toLocaleString('fr-FR')} cr, solde: ${balance.toLocaleString('fr-FR')} cr`,
         required: totalCost, available: balance,
       }, { status: 402 })
     }
 
-    // ── STEP 1: Create query record FIRST to get queryId ────
+    // ── Create query record FIRST ────────────────────────────
     const { data: queryRecord, error: qErr } = await supabaseAdmin
       .from('queries').insert({
         user_id:          user.id,
@@ -118,7 +177,7 @@ export async function POST(request: NextRequest) {
     }
     const queryId = queryRecord.id
 
-    // ── STEP 2: Deduct credits ───────────────────────────────
+    // ── Deduct credits ───────────────────────────────────────
     if (totalCost > 0) {
       await supabaseAdmin.from('profiles')
         .update({ credit_balance: balance - totalCost }).eq('id', user.id)
@@ -132,11 +191,10 @@ export async function POST(request: NextRequest) {
       await supabaseAdmin.from('profiles').update({ free_trial_used: true }).eq('id', user.id)
     }
 
-    // ── STEP 3: Save company_unlocks WITH query_id + fields ──
-    // Batch in chunks of 500 to avoid request size limits
-    const chunkSize = 500
-    for (let i = 0; i < selected.length; i += chunkSize) {
-      const chunk = selected.slice(i, i + chunkSize)
+    // ── Save company_unlocks in batches of 500 ───────────────
+    const now = new Date().toISOString()
+    for (let i = 0; i < selected.length; i += 500) {
+      const chunk = selected.slice(i, i + 500)
       const rows = chunk.map(company => {
         const cid = company.id as string
         const existing = unlockMap[cid] ?? []
@@ -144,16 +202,16 @@ export async function POST(request: NextRequest) {
         return {
           user_id:       user.id,
           company_id:    cid,
-          query_id:      queryId,      // ← Link to this specific search
+          query_id:      queryId,
           credits_spent: FIELD_GROUPS['basic'].cost,
-          fields:        merged,       // ← Which fields are unlocked
-          unlocked_at:   new Date().toISOString(),
+          fields:        merged,
+          unlocked_at:   now,
         }
       })
       const { error: uErr } = await supabaseAdmin
         .from('company_unlocks')
         .upsert(rows, { onConflict: 'user_id,company_id' })
-      if (uErr) console.error(`Unlock batch ${i}-${i+chunkSize} error:`, uErr)
+      if (uErr) console.error(`Unlock batch ${i} error:`, uErr)
     }
 
     return NextResponse.json({
