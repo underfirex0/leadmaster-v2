@@ -3,6 +3,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
+const CHUNK = 500
+
+async function chunkIn<T>(
+  table: string,
+  selectCols: string,
+  ids: string[],
+  matchCol: string,
+  extraFilters?: (q: ReturnType<typeof supabaseAdmin.from>) => ReturnType<typeof supabaseAdmin.from>
+): Promise<T[]> {
+  const results: T[] = []
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK)
+    let q = supabaseAdmin.from(table).select(selectCols).in(matchCol, slice)
+    if (extraFilters) q = extraFilters(q as ReturnType<typeof supabaseAdmin.from>) as typeof q
+    const { data } = await q.limit(CHUNK)
+    results.push(...(data ?? []))
+  }
+  return results
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -12,58 +32,82 @@ export async function POST(request: NextRequest) {
     const { company_ids } = await request.json()
     if (!company_ids?.length) return NextResponse.json({ error: 'company_ids requis' }, { status: 400 })
 
-    // Fetch company data — no need to verify unlocks, just inject what they asked for
-    const { data: companies, error: fetchErr } = await supabaseAdmin
-      .from('companies')
-      .select('id,name,city,phone_1,email,website,director,primary_sector,forme_juridique,annee_creation,ice')
-      .in('id', company_ids)
+    // ── Fetch all company data in chunks ─────────────────────
+    const companies = await chunkIn<{
+      id:string; name:string; city:string|null; phone_1:string|null
+      email:string|null; website:string|null; director:string|null
+      primary_sector:string|null; forme_juridique:string|null
+      annee_creation:string|null; ice:string|null
+    }>(
+      'companies',
+      'id,name,city,phone_1,email,website,director,primary_sector,forme_juridique,annee_creation,ice',
+      company_ids, 'id'
+    )
 
-    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
-    if (!companies?.length) return NextResponse.json({ error: 'Entreprises introuvables' }, { status: 404 })
+    if (!companies.length) return NextResponse.json({ error: 'Entreprises introuvables' }, { status: 404 })
 
-    // Check already in CRM to avoid duplicates
-    const { data: existing } = await supabaseAdmin
-      .from('crm_leads').select('company_id')
-      .eq('user_id', user.id).in('company_id', company_ids)
-    const alreadyIn = new Set((existing ?? []).map(l => l.company_id as string))
+    // ── Check already in CRM in chunks ───────────────────────
+    const existingRows = await chunkIn<{company_id:string}>(
+      'crm_leads', 'company_id', company_ids, 'company_id',
+      q => q.eq('user_id', user.id)
+    )
+    const alreadyIn = new Set(existingRows.map(r => r.company_id))
 
     const toInject = companies.filter(c => !alreadyIn.has(c.id))
-    if (!toInject.length) return NextResponse.json({
-      injected: 0, skipped: alreadyIn.size,
-      message: `Toutes ces entreprises sont déjà dans votre CRM`
-    })
-
-    const leads = toInject.map(c => ({
-      user_id:      user.id,
-      source:       'data',
-      company_id:   c.id,
-      company_name: c.name,           // ← ALWAYS set from companies.name
-      phone:        c.phone_1 ?? null,
-      email:        c.email ?? null,
-      website:      c.website ?? null,
-      contact_name: c.director ?? null,
-      city:         c.city ?? null,
-      country:      'Maroc',
-      sector:       c.primary_sector ?? null,
-      status:       'to_call',
-      priority:     'normal',
-      custom_fields: {
-        forme_juridique: c.forme_juridique ?? '',
-        annee_creation: c.annee_creation ?? '',
-        ice: c.ice ?? '',
-      },
-    }))
-
-    const { data: inserted, error } = await supabaseAdmin.from('crm_leads').insert(leads).select('id')
-    if (error) {
-      console.error('CRM inject error:', error)
-      return NextResponse.json({ error: 'Erreur injection: ' + error.message }, { status: 500 })
+    if (!toInject.length) {
+      return NextResponse.json({
+        injected: 0, skipped: alreadyIn.size,
+        message: `Toutes ces entreprises sont déjà dans votre CRM (${alreadyIn.size})`
+      })
     }
 
+    // ── Insert in batches of 500 ─────────────────────────────
+    let totalInjected = 0
+    let totalErrors   = 0
+
+    for (let i = 0; i < toInject.length; i += CHUNK) {
+      const chunk = toInject.slice(i, i + CHUNK)
+      const leads = chunk.map(c => ({
+        user_id:       user.id,
+        source:        'data',
+        company_id:    c.id,
+        company_name:  c.name,
+        phone:         c.phone_1  ?? null,
+        email:         c.email    ?? null,
+        website:       c.website  ?? null,
+        contact_name:  c.director ?? null,
+        city:          c.city     ?? null,
+        country:       'Maroc',
+        sector:        c.primary_sector ?? null,
+        status:        'to_call',
+        priority:      'normal',
+        custom_fields: {
+          forme_juridique: c.forme_juridique ?? '',
+          annee_creation:  c.annee_creation  ?? '',
+          ice:             c.ice             ?? '',
+        },
+      }))
+
+      const { data: inserted, error } = await supabaseAdmin
+        .from('crm_leads').insert(leads).select('id')
+
+      if (error) {
+        console.error(`CRM inject batch ${i} error:`, error.message)
+        totalErrors += chunk.length
+      } else {
+        totalInjected += inserted?.length ?? 0
+      }
+    }
+
+    const msg = totalErrors > 0
+      ? `${totalInjected} injectées, ${totalErrors} erreurs, ${alreadyIn.size} déjà dans CRM`
+      : `${totalInjected} entreprise${totalInjected > 1 ? 's' : ''} injectée${totalInjected > 1 ? 's' : ''} dans le CRM ✓`
+
     return NextResponse.json({
-      injected: inserted?.length ?? 0,
+      injected: totalInjected,
       skipped:  alreadyIn.size,
-      message:  `${inserted?.length ?? 0} entreprise${(inserted?.length ?? 0) > 1 ? 's' : ''} injectée${(inserted?.length ?? 0) > 1 ? 's' : ''} dans le CRM ✓`
+      errors:   totalErrors,
+      message:  msg,
     })
   } catch (e) {
     console.error('Inject error:', e)
