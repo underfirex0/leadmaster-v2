@@ -23,11 +23,7 @@ const FIELD_ICONS: Record<string, React.ElementType> = {
 
 const FIELD_LABELS: Record<string, string> = {
   phone:'Téléphone', email:'E-mail', website:'Site web', director:'Dirigeant',
-<<<<<<< HEAD
   ice:'ICE', annee_creation:'Année création', capital:'Capital social', address:'Adresse', effectif:'Effectif',
-=======
-  ice:'ICE', annee_creation:'Année création', capital:'Capital social', address:'Adresse',
->>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
 }
 
 // Capital is stored as TEXT — handle "100 000", "100,000", "100000 MAD", etc.
@@ -130,11 +126,7 @@ function CompanyCard({ company, queryFields, onUnlock, onInjectOne, injectingId,
   // Row 1: contact essentials
   const ROW1: FieldGroupId[] = ['phone', 'email', 'website', 'director']
   // Row 2: legal / financial data
-<<<<<<< HEAD
   const ROW2: FieldGroupId[] = ['ice', 'annee_creation', 'effectif', 'capital', 'address']
-=======
-  const ROW2: FieldGroupId[] = ['ice', 'annee_creation', 'capital', 'address']
->>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
 
   return (
     <div className={cn(
