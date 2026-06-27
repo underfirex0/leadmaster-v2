@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   ChevronLeft, Download, Users2, Phone, Mail, Globe, User,
   Building2, MapPin, Loader2, Lock, Unlock, ExternalLink,
-  Share2, DollarSign, Calendar, FileText, Check, CheckSquare, Square, Users2
+  Share2, DollarSign, Calendar, FileText, Check, CheckSquare, Square
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FIELD_GROUPS } from '@/lib/constants'
