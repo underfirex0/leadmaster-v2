@@ -9,62 +9,90 @@ const FIELD_COL = Object.fromEntries(
   Object.entries(FIELD_GROUPS).map(([k,v]) => [k, v.columns])
 ) as Record<string, string[]>
 
+// All possible contact columns — used for global completeness scoring
+const ALL_CONTACT_COLS = [
+  'phone_1','phone_2','email','website','director',
+  'ice','rc','capital','address_raw','facebook','instagram',
+  'linkedin','annee_creation','forme_juridique','description'
+]
+
 function hasData(c: Record<string,unknown>, field: string) {
   return (FIELD_COL[field] ?? []).some(col => c[col] != null && c[col] !== '')
 }
 
-// Completeness score: how many of the selected fields does this company have
-function completeness(c: Record<string,unknown>, fields: string[]): number {
+// Selected-field completeness (for pricing accuracy)
+function selectedCompleteness(c: Record<string,unknown>, fields: string[]): number {
   return fields.reduce((s,f) => s + (hasData(c,f) ? 1 : 0), 0)
 }
 
-// Fetch all matching companies in batches of 1000 (Supabase row limit)
+// Global completeness across ALL fields (for display quality — fewer "Non disponible")
+function globalCompleteness(c: Record<string,unknown>): number {
+  return ALL_CONTACT_COLS.reduce((s, col) =>
+    s + (c[col] != null && c[col] !== '' ? 1 : 0), 0)
+}
+
+// Parse capital value from text (handles "100 000", "1,000,000", "100000 MAD" etc.)
+function parseCapital(val: unknown): number {
+  if (!val) return NaN
+  const n = parseFloat(String(val).replace(/[^0-9.,]/g,'').replace(',','.').replace(/\s/g,''))
+  return isNaN(n) ? NaN : n
+}
+
 async function fetchAllMatching(
-  baseFilters: {
+  filters: {
     sectors: string[], domaines: string[], activites: string[],
-    cities: string[], name: string, capital_min?: string, capital_max?: string
+    cities: string[], name: string,
+    capital_min?: string, capital_max?: string,
+    effectif?: string,
   },
-  maxRows: number
+  targetRows: number
 ): Promise<Record<string,unknown>[]> {
   const BATCH = 1000
   const all: Record<string,unknown>[] = []
-
-  // We fetch up to maxRows * 2 to have better candidates for completeness sorting
-  // but cap at 20k to avoid excessive DB calls
-  const fetchTarget = Math.min(maxRows * 2, 20000)
+  // We fetch 2× target to have better candidates for completeness sorting
+  const fetchTarget = Math.min(targetRows * 2, 20000)
 
   for (let offset = 0; offset < fetchTarget; offset += BATCH) {
-    // Build fresh query each batch (Supabase query objects aren't reusable with range)
     let q = supabaseAdmin
       .from('companies')
       .select('id,name,city,annee_creation,forme_juridique,primary_sector,primary_domaine,' +
         'primary_activite,activities,phone_1,phone_2,email,website,director,' +
-        'ice,rc,capital,address_raw,latitude,longitude,facebook,instagram,linkedin,' +
+        'ice,rc,capital,effectif,address_raw,latitude,longitude,facebook,instagram,linkedin,' +
         'youtube,description,rating,logo_url')
 
-    const { sectors, domaines, activites, cities, name, capital_min, capital_max } = baseFilters
+    const { sectors, domaines, activites, cities, name } = filters
 
     if (sectors.length || domaines.length || activites.length) {
       const parts: string[] = []
-      if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map((s:string)=>`"${s}"`).join(',')})`)
-      if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map((s:string)=>`"${s}"`).join(',')})`)
-      if (activites.length) parts.push(`primary_activite.in.(${activites.map((s:string)=>`"${s}"`).join(',')})`)
+      if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map(s=>`"${s}"`).join(',')})`)
+      if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map(s=>`"${s}"`).join(',')})`)
+      if (activites.length) parts.push(`primary_activite.in.(${activites.map(s=>`"${s}"`).join(',')})`)
       q = q.or(parts.join(','))
     }
-    if (cities.length) q = q.in('city', cities)
-    if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
-    if (capital_min && capital_min !== '') q = q.gte('capital', capital_min)
-    if (capital_max && capital_max !== '') q = q.lte('capital', capital_max)
+    if (cities.length)     q = q.in('city', cities)
+    if (name.trim())       q = q.ilike('name', `%${name.trim()}%`)
+    if (filters.effectif)  q = q.eq('effectif', filters.effectif)
 
-    const { data: batch, error } = await q
-      .range(offset, offset + BATCH - 1)
-      .order('name')  // consistent ordering for pagination
-
+    const { data: batch, error } = await q.range(offset, offset + BATCH - 1).order('name')
     if (error) { console.error(`Batch ${offset} error:`, error); break }
     if (!batch?.length) break
     all.push(...batch)
-    if (batch.length < BATCH) break // no more results
+    if (batch.length < BATCH) break
     if (all.length >= fetchTarget) break
+  }
+
+  // In-memory capital filter (capital is TEXT in DB, so numeric comparison must be in-memory)
+  const { capital_min, capital_max } = filters
+  if (capital_min || capital_max) {
+    const min = capital_min ? parseFloat(capital_min) : null
+    const max = capital_max ? parseFloat(capital_max) : null
+    return all.filter(c => {
+      const cap = parseCapital(c.capital)
+      if (isNaN(cap)) return false
+      if (min !== null && cap < min) return false
+      if (max !== null && cap > max) return false
+      return true
+    })
   }
 
   return all
@@ -83,6 +111,7 @@ export async function POST(request: NextRequest) {
       fields=[] as string[],
       limit=50,
       capital_min, capital_max,
+      effectif,
     } = body
 
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
@@ -93,46 +122,39 @@ export async function POST(request: NextRequest) {
       { sectors, domaines, activites, cities, name,
         capital_min: capital_min ? String(capital_min) : undefined,
         capital_max: capital_max ? String(capital_max) : undefined,
+        effectif: effectif || undefined,
       },
       maxCompanies
     )
 
-    if (!allRaw.length) return NextResponse.json({ error: 'Aucune entreprise trouvée' }, { status: 404 })
+    if (!allRaw.length) return NextResponse.json({ error: 'Aucune entreprise trouvée avec ces critères' }, { status: 404 })
 
-    // ── Sort by completeness (companies with most data FIRST) ─
-    // Primary: completeness for selected fields (descending)
-    // Secondary: has phone (most important contact field)
-    // Tertiary: has email
+    // ── Sort: best global data quality FIRST ────────────────
+    // Primary: selected-field completeness (most relevant to user's choice)
+    // Secondary: GLOBAL completeness (fewer "Non disponible" shown to user)
+    // This ensures user always sees richest companies first, regardless of what they selected
     allRaw.sort((a, b) => {
-      const scoreA = completeness(a, allFields)
-      const scoreB = completeness(b, allFields)
-      if (scoreB !== scoreA) return scoreB - scoreA
-      // Tiebreaker: prefer companies with phone
-      const phoneA = hasData(a, 'phone') ? 1 : 0
-      const phoneB = hasData(b, 'phone') ? 1 : 0
-      if (phoneB !== phoneA) return phoneB - phoneA
-      // Then email
-      const emailA = hasData(a, 'email') ? 1 : 0
-      const emailB = hasData(b, 'email') ? 1 : 0
-      return emailB - emailA
+      const selA = selectedCompleteness(a, allFields)
+      const selB = selectedCompleteness(b, allFields)
+      if (selB !== selA) return selB - selA
+      return globalCompleteness(b) - globalCompleteness(a)
     })
 
     const selected = allRaw.slice(0, maxCompanies)
     const companyIds = selected.map(c => c.id as string)
 
     // ── Check existing unlocks ───────────────────────────────
-    const existingUnlocksAll: {company_id: string; fields: string[]}[] = []
+    const existingAll: {company_id: string; fields: string[]}[] = []
     for (let i = 0; i < companyIds.length; i += 1000) {
-      const chunk = companyIds.slice(i, i + 1000)
       const { data } = await supabaseAdmin
         .from('company_unlocks').select('company_id,fields')
-        .eq('user_id', user.id).in('company_id', chunk)
-      existingUnlocksAll.push(...(data ?? []))
+        .eq('user_id', user.id).in('company_id', companyIds.slice(i, i+1000))
+      existingAll.push(...(data ?? []))
     }
     const unlockMap: Record<string,string[]> = {}
-    for (const u of existingUnlocksAll) unlockMap[u.company_id] = (u.fields as string[]) ?? []
+    for (const u of existingAll) unlockMap[u.company_id] = (u.fields as string[]) ?? []
 
-    // ── Smart cost: only charge for fields that have data ────
+    // ── Smart cost calculation ───────────────────────────────
     const { data: profile } = await supabaseAdmin
       .from('profiles').select('credit_balance,free_trial_used').eq('id', user.id).single()
     const balance   = profile?.credit_balance ?? 0
@@ -156,7 +178,7 @@ export async function POST(request: NextRequest) {
 
     if (totalCost > balance) {
       return NextResponse.json({
-        error: `Crédits insuffisants. Coût estimé: ${totalCost.toLocaleString('fr-FR')} cr, solde: ${balance.toLocaleString('fr-FR')} cr`,
+        error: `Crédits insuffisants. Coût: ${totalCost.toLocaleString('fr-FR')} cr, solde: ${balance.toLocaleString('fr-FR')} cr`,
         required: totalCost, available: balance,
       }, { status: 402 })
     }
@@ -165,14 +187,13 @@ export async function POST(request: NextRequest) {
     const { data: queryRecord, error: qErr } = await supabaseAdmin
       .from('queries').insert({
         user_id:          user.id,
-        filters:          { sectors, domaines, activites, cities, name, capital_min, capital_max },
+        filters:          { sectors, domaines, activites, cities, name, capital_min, capital_max, effectif: effectif||undefined },
         fields_requested: allFields,
         result_count:     selected.length,
         credits_spent:    totalCost,
       }).select('id').single()
 
     if (qErr || !queryRecord) {
-      console.error('Query insert error:', qErr)
       return NextResponse.json({ error: 'Erreur création recherche: ' + (qErr?.message ?? 'unknown') }, { status: 500 })
     }
     const queryId = queryRecord.id
@@ -199,27 +220,16 @@ export async function POST(request: NextRequest) {
         const cid = company.id as string
         const existing = unlockMap[cid] ?? []
         const merged   = [...new Set([...existing, ...allFields])]
-        return {
-          user_id:       user.id,
-          company_id:    cid,
-          query_id:      queryId,
-          credits_spent: FIELD_GROUPS['basic'].cost,
-          fields:        merged,
-          unlocked_at:   now,
-        }
+        return { user_id: user.id, company_id: cid, query_id: queryId,
+                 credits_spent: FIELD_GROUPS['basic'].cost, fields: merged, unlocked_at: now }
       })
-      const { error: uErr } = await supabaseAdmin
-        .from('company_unlocks')
+      await supabaseAdmin.from('company_unlocks')
         .upsert(rows, { onConflict: 'user_id,company_id' })
-      if (uErr) console.error(`Unlock batch ${i} error:`, uErr)
     }
 
     return NextResponse.json({
-      queryId,
-      companiesUnlocked: selected.length,
-      creditsSpent:      totalCost,
-      newBalance:        balance - totalCost,
-      freeTrialUsed:     freeTrial,
+      queryId, companiesUnlocked: selected.length,
+      creditsSpent: totalCost, newBalance: balance - totalCost, freeTrialUsed: freeTrial,
     })
   } catch (e) {
     console.error('Execute error:', e)

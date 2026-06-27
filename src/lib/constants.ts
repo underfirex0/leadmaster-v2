@@ -10,7 +10,7 @@ export const FIELD_GROUPS = {
     columns: ['name','city','primary_sector','primary_activite','activities','forme_juridique','facebook','instagram','linkedin','youtube'],
     description: 'Raison sociale · Ville · Secteur · Activités · Forme juridique · Réseaux sociaux',
     icon: '🏢',
-    required: true, // Always charged on first unlock of a company
+    required: true,
   },
   phone: {
     id: 'phone', label: 'Téléphone', cost: 1,
@@ -47,6 +47,11 @@ export const FIELD_GROUPS = {
     columns: ['director'],
     description: 'Nom du gérant / dirigeant', icon: '👤',
   },
+  effectif: {
+    id: 'effectif', label: 'Effectif', cost: 2,
+    columns: ['effectif'],
+    description: 'Tranche de salariés', icon: '👥',
+  },
   capital: {
     id: 'capital', label: 'Capital social', cost: 5,
     columns: ['capital'],
@@ -64,6 +69,19 @@ export const PREVIEW_COLUMNS = ['name','city']
 // Free trial: first 100 companies with basic only = free
 export const FREE_TRIAL_LIMIT = 100
 export const FREE_TRIAL_FIELDS = ['basic'] as FieldGroupId[]
+
+// ── Effectif tranches (exact DB values) ──────────────────────
+export const EFFECTIF_TRANCHES = [
+  { value: 'De 1 à 9 salariés',          label: 'De 1 à 9 salariés' },
+  { value: 'De 10 à 19 salariés',        label: 'De 10 à 19 salariés' },
+  { value: 'De 20 à 49 salariés',        label: 'De 20 à 49 salariés' },
+  { value: 'De 50 à 99 salariés',        label: 'De 50 à 99 salariés' },
+  { value: 'De 100 à 249 salariés',      label: 'De 100 à 249 salariés' },
+  { value: 'De 250 à 499 salariés',      label: 'De 250 à 499 salariés' },
+  { value: 'De 500 à 999 salariés',      label: 'De 500 à 999 salariés' },
+  { value: 'De 1 000 à 4 999 salariés',  label: 'De 1 000 à 4 999 salariés' },
+  { value: 'Plus de 5 000 salariés',     label: 'Plus de 5 000 salariés' },
+] as const
 
 // ── Plans ────────────────────────────────────────────────────
 export const PLANS = {
@@ -83,7 +101,8 @@ export const CREDIT_PACKS = [
 
 // Legacy
 export const FIELD_COSTS: Record<string, number> = {
-  basic:1, phone:1, email:1, address:1, website:1, ice:2, annee_creation:2, director:2, capital:5,
+  basic:1, phone:1, email:1, address:1, website:1, ice:2,
+  annee_creation:2, director:2, effectif:2, capital:5,
 }
 export const FREE_FIELDS: string[] = []
 
