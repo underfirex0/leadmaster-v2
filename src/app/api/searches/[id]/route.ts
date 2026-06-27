@@ -100,7 +100,7 @@ export async function GET(req: NextRequest, { params }: P) {
       const chunk = companyIds.slice(i, i + BATCH)
       const { data, error } = await supabaseAdmin
         .from('companies')
-        .select('id,name,city,annee_creation,primary_sector,primary_domaine,primary_activite,activities,forme_juridique,phone_1,phone_2,email,website,director,ice,rc,capital,address_raw,latitude,longitude,facebook,instagram,linkedin,youtube,logo_url,description,rating')
+        .select('id,name,city,annee_creation,primary_sector,primary_domaine,primary_activite,activities,forme_juridique,phone_1,phone_2,email,website,director,ice,rc,effectif,capital,address_raw,latitude,longitude,facebook,instagram,linkedin,youtube,logo_url,description,rating')
         .in('id', chunk)
         .limit(BATCH)
       if (error) { console.error('Companies fetch error:', error); continue }
