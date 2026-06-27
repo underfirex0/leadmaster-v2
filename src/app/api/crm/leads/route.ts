@@ -4,11 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const LEAD_COLUMNS = 'id,user_id,source,company_id,company_name,phone,email,website,contact_name,city,country,sector,status,priority,notes,callback_date,last_contacted_at,status_changed_at,created_at,updated_at,custom_fields'
-<<<<<<< HEAD
 const COMPANY_COLUMNS = 'id,name,city,phone_1,phone_2,email,website,director,ice,rc,forme_juridique,primary_sector,primary_activite,activities,address_raw,facebook,instagram,linkedin,annee_creation,effectif,capital'
-=======
-const COMPANY_COLUMNS = 'id,name,city,phone_1,phone_2,email,website,director,ice,rc,forme_juridique,primary_sector,primary_activite,activities,address_raw,facebook,instagram,linkedin,annee_creation,capital'
->>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
 
 // Fetch ALL rows from a table bypassing the 1000-row Supabase cap
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,10 +57,7 @@ function computeAvailability(c: Record<string, unknown> | null): Record<string, 
     director:       !!c.director,
     ice:            !!c.ice,
     annee_creation: !!c.annee_creation,
-<<<<<<< HEAD
     effectif:       !!c.effectif,
-=======
->>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
     capital:        !!c.capital,
     address:        !!c.address_raw,
   }
@@ -120,10 +113,7 @@ export async function GET(request: NextRequest) {
       const directorVal = uf.includes('director')       ? (c?.director || null)                : null
       const iceVal      = uf.includes('ice')            ? (c?.ice || null)                     : null
       const anneeVal    = uf.includes('annee_creation') ? (c?.annee_creation || null)          : null
-<<<<<<< HEAD
       const effectifVal = uf.includes('effectif')       ? (c?.effectif as string || null)      : null
-=======
->>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
       const capitalVal  = uf.includes('capital')        ? (c?.capital || null)                 : null
       const addressVal  = uf.includes('address')        ? (c?.address_raw || null)             : null
 
@@ -146,10 +136,7 @@ export async function GET(request: NextRequest) {
         display_address:  addressVal,
         display_capital:  capitalVal,
         display_annee:    anneeVal,
-<<<<<<< HEAD
         display_effectif: effectifVal,
-=======
->>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
         display_activities: c?.activities ?? null,
         unlocked_fields:  uf,
         field_availability: avail,
