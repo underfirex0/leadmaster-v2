@@ -217,7 +217,10 @@ export default function SearchPage() {
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(['phone','email']))
   const [maxCompanies, setMaxCompanies] = useState(50)
   const [capitalTranche, setCapitalTranche] = useState('-')
+<<<<<<< HEAD
   const [effectifTranche, setEffectifTranche] = useState('-')
+=======
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
   const [liveCount, setLiveCount] = useState<number|null>(null)
   const [liveLoading, setLiveLoading] = useState(false)
   const [balance, setBalance]   = useState<number|null>(null)
@@ -283,7 +286,11 @@ export default function SearchPage() {
 
   // Live count — debounced 600ms
   useEffect(() => {
+<<<<<<< HEAD
     const hasFilters = selected.size>0 || cities.length>0 || nameSearch.trim() || capitalTranche!=='-' || effectifTranche!=='-'
+=======
+    const hasFilters = selected.size>0 || cities.length>0 || nameSearch.trim() || capitalTranche!=='-'
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
     if (!hasFilters) { setLiveCount(null); return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setLiveLoading(true)
@@ -293,8 +300,12 @@ export default function SearchPage() {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ activites:[...selected], cities, name:nameSearch,
             fields:[...selectedFields,'basic'], limit:maxCompanies,
+<<<<<<< HEAD
             capital_min:capitalMin||undefined, capital_max:capitalMax||undefined,
             effectif: effectifTranche!=='-'?effectifTranche:undefined }),
+=======
+            capital_min:capitalMin||undefined, capital_max:capitalMax||undefined }),
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
         })
         const d = await r.json()
         setLiveCount(d.count??0)
@@ -302,7 +313,11 @@ export default function SearchPage() {
         setFreeTrialAvail(d.freeTrialEligible??false)
       } finally { setLiveLoading(false) }
     }, 600)
+<<<<<<< HEAD
   }, [selected, cities, nameSearch, selectedFields, maxCompanies, capitalTranche, effectifTranche])
+=======
+  }, [selected, cities, nameSearch, selectedFields, maxCompanies, capitalTranche])
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
 
   const toggleRub = useCallback((slug:string,on:boolean) => {
     setSelected(prev=>{const n=new Set(prev);on?n.add(slug):n.delete(slug);return n})
@@ -316,6 +331,7 @@ export default function SearchPage() {
   // When capital tranche selected → auto-check capital field
   function handleCapitalTranche(val:string) {
     setCapitalTranche(val)
+<<<<<<< HEAD
     if (val !== '-') setSelectedFields(prev => new Set([...prev,'capital']))
   }
 
@@ -323,6 +339,11 @@ export default function SearchPage() {
   function handleEffectifTranche(val:string) {
     setEffectifTranche(val)
     if (val !== '-') setSelectedFields(prev => new Set([...prev,'effectif']))
+=======
+    if (val !== '-') {
+      setSelectedFields(prev => new Set([...prev,'capital']))
+    }
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
   }
 
   const costPerBiz = useMemo(() => {
@@ -334,7 +355,11 @@ export default function SearchPage() {
   }, [selectedFields])
 
   const maxEstCost = costPerBiz * maxCompanies
+<<<<<<< HEAD
   const hasFilter = selected.size>0 || cities.length>0 || nameSearch.trim() || capitalTranche!=='-' || effectifTranche!=='-'
+=======
+  const hasFilter = selected.size>0 || cities.length>0 || nameSearch.trim() || capitalTranche!=='-'
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
   const isFreeTrial = freeTrialAvail && selectedFields.size===0 && maxCompanies<=100
 
   const filteredCities = useMemo(() =>
@@ -355,8 +380,12 @@ export default function SearchPage() {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ activites:[...selected], cities, name:nameSearch,
           fields:[...selectedFields], limit:maxCompanies,
+<<<<<<< HEAD
           capital_min:capitalMin||undefined, capital_max:capitalMax||undefined,
             effectif: effectifTranche!=='-'?effectifTranche:undefined }),
+=======
+          capital_min:capitalMin||undefined, capital_max:capitalMax||undefined }),
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
       })
       const d = await r.json()
       if (!r.ok) { showToast(d.error||'Erreur estimation','error'); return }
@@ -374,8 +403,12 @@ export default function SearchPage() {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ activites:[...selected], cities, name:nameSearch,
           fields:[...selectedFields], limit:maxCompanies,
+<<<<<<< HEAD
           capital_min:capitalMin||undefined, capital_max:capitalMax||undefined,
             effectif: effectifTranche!=='-'?effectifTranche:undefined }),
+=======
+          capital_min:capitalMin||undefined, capital_max:capitalMax||undefined }),
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
       })
       const d = await r.json()
       if (!r.ok) { setConfirmData(null); showToast(d.error||'Erreur','error'); return }
@@ -531,6 +564,7 @@ export default function SearchPage() {
                   {capitalTranche!=='-'&&(
                     <p className="text-[11.5px] text-amber-600 mt-1">💡 "Capital social" ajouté automatiquement à vos champs</p>
                   )}
+<<<<<<< HEAD
                 </div>
 
                 {/* Effectif (tranche de salariés) */}
@@ -546,6 +580,8 @@ export default function SearchPage() {
                   {effectifTranche!=='-'&&(
                     <p className="text-[11.5px] text-amber-600 mt-1">💡 "Effectif" ajouté automatiquement à vos champs</p>
                   )}
+=======
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
                 </div>
               </div>
             </div>

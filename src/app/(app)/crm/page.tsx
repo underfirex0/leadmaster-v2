@@ -55,11 +55,19 @@ function initials(n:string) {
   return (n||'?').split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()
 }
 function totalAvailable(lead:Lead) {
+<<<<<<< HEAD
   const fields = ['phone','email','website','director','ice','annee_creation','effectif','capital','address']
   return fields.filter(f => lead.unlocked_fields.includes(f) || lead.field_availability[f]).length
 }
 function totalUnlocked(lead:Lead) {
   const fields = ['phone','email','website','director','ice','annee_creation','effectif','capital','address']
+=======
+  const fields = ['phone','email','website','director','ice','annee_creation','capital','address']
+  return fields.filter(f => lead.unlocked_fields.includes(f) || lead.field_availability[f]).length
+}
+function totalUnlocked(lead:Lead) {
+  const fields = ['phone','email','website','director','ice','annee_creation','capital','address']
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
   return fields.filter(f => lead.unlocked_fields.includes(f)).length
 }
 
@@ -188,8 +196,13 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
     onDelete(lead.id)
   }
 
+<<<<<<< HEAD
   const hasRow2 = lead.display_ice || lead.display_annee || lead.display_effectif || lead.display_capital || lead.display_address ||
     (lead.company_id && (lead.field_availability.ice || lead.field_availability.annee_creation || lead.field_availability.effectif || lead.field_availability.capital || lead.field_availability.address))
+=======
+  const hasRow2 = lead.display_ice || lead.display_annee || lead.display_capital || lead.display_address ||
+    (lead.company_id && (lead.field_availability.ice || lead.field_availability.annee_creation || lead.field_availability.capital || lead.field_availability.address))
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
@@ -232,7 +245,10 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 pt-2 border-t border-gray-50">
                 <FieldRow lead={lead} field="ice"            label="ICE"          icon={Building2} value={lead.display_ice}     onUnlock={onUnlock}/>
                 <FieldRow lead={lead} field="annee_creation" label="Année créat." icon={Calendar}  value={lead.display_annee}   onUnlock={onUnlock}/>
+<<<<<<< HEAD
                 <FieldRow lead={lead} field="effectif"       label="Effectif"     icon={Users2}    value={lead.display_effectif} onUnlock={onUnlock}/>
+=======
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
                 <FieldRow lead={lead} field="capital"        label="Capital"      icon={DollarSign}value={lead.display_capital} onUnlock={onUnlock}/>
                 <FieldRow lead={lead} field="address"        label="Adresse"      icon={MapPin}    value={lead.display_address} onUnlock={onUnlock}/>
               </div>
@@ -362,7 +378,11 @@ export default function CRMPage() {
     }
     const fieldToData: Record<string,string> = {
       phone:'phone_1',email:'email',website:'website',director:'director',
+<<<<<<< HEAD
       ice:'ice',annee_creation:'annee_creation',effectif:'effectif',capital:'capital',address:'address_raw',
+=======
+      ice:'ice',annee_creation:'annee_creation',capital:'capital',address:'address_raw',
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
     }
     const displayKey = fieldToDisplay[field]
     const newValue   = d.data?.[fieldToData[field]] ?? null

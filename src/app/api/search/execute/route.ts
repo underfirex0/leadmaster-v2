@@ -42,8 +42,12 @@ async function fetchAllMatching(
   filters: {
     sectors: string[], domaines: string[], activites: string[],
     cities: string[], name: string,
+<<<<<<< HEAD
     capital_min?: string, capital_max?: string,
     effectif?: string,
+=======
+    capital_min?: string, capital_max?: string
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
   },
   targetRows: number
 ): Promise<Record<string,unknown>[]> {
@@ -69,9 +73,14 @@ async function fetchAllMatching(
       if (activites.length) parts.push(`primary_activite.in.(${activites.map(s=>`"${s}"`).join(',')})`)
       q = q.or(parts.join(','))
     }
+<<<<<<< HEAD
     if (cities.length)     q = q.in('city', cities)
     if (name.trim())       q = q.ilike('name', `%${name.trim()}%`)
     if (filters.effectif)  q = q.eq('effectif', filters.effectif)
+=======
+    if (cities.length) q = q.in('city', cities)
+    if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
+>>>>>>> 9efec50af4f5406788bf548159ce4ce7ac8c5467
 
     const { data: batch, error } = await q.range(offset, offset + BATCH - 1).order('name')
     if (error) { console.error(`Batch ${offset} error:`, error); break }
