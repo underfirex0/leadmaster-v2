@@ -4,7 +4,7 @@ import {
   Phone, Mail, Globe, User, MapPin, ChevronDown, ChevronUp,
   Search, Loader2, Trash2, RefreshCw, X, Users2, ArrowRight,
   Lock, Building2, Calendar, DollarSign, Star, TrendingUp,
-  MessageSquare, Check, AlertTriangle, X, RefreshCcw
+  MessageSquare, Check, AlertTriangle, RefreshCcw
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
