@@ -4,7 +4,7 @@ import {
   Phone, Mail, Globe, User, MapPin, ChevronDown, ChevronUp,
   Search, Loader2, Trash2, RefreshCw, X, Users2, ArrowRight,
   Lock, Building2, Calendar, DollarSign, Star, TrendingUp,
-  MessageSquare, Check
+  MessageSquare, Check, AlertTriangle, X, RefreshCcw
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -34,6 +34,7 @@ type Lead = {
   unlocked_fields:string[]
   field_availability:Record<string,boolean>
   richness:number
+  refund_status?: 'pending'|'approved'|'rejected'|null
 }
 
 function timeAgo(d:string) {
@@ -159,14 +160,118 @@ function FieldRow({ lead, field, label, icon: Icon, value, onUnlock }: {
   return null
 }
 
+
+// ── Signaler Modal ────────────────────────────────────────────
+const REASONS = [
+  { value: 'closed',          label: '🚫 Entreprise fermée' },
+  { value: 'wrong_number',    label: '📵 Numéro incorrect / inexistant' },
+  { value: 'wrong_director',  label: '👤 Dirigeant incorrect' },
+  { value: 'wrong_address',   label: '🏠 Adresse incorrecte' },
+  { value: 'not_exist',       label: '❌ Entreprise n\'existe pas' },
+  { value: 'other',           label: '💬 Autre' },
+]
+
+function SignalerModal({ lead, onClose, onSuccess }: {
+  lead: Lead
+  onClose: () => void
+  onSuccess: (leadId: string) => void
+}) {
+  const [reason, setReason]   = useState('')
+  const [note, setNote]       = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState<string|null>(null)
+
+  async function handleSubmit() {
+    if (!reason) { setError('Choisissez une raison'); return }
+    setLoading(true); setError(null)
+    const r = await fetch('/api/refund-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lead_id:      lead.id,
+        company_id:   lead.company_id,
+        company_name: lead.display_name,
+        reason, note,
+      }),
+    })
+    const d = await r.json()
+    if (!r.ok) { setError(d.error || 'Erreur'); setLoading(false); return }
+    onSuccess(lead.id)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div>
+            <h2 className="font-bold text-[16px] text-gray-900">Signaler un problème</h2>
+            <p className="text-[12.5px] text-gray-400 mt-0.5">{lead.display_name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+            <X className="w-4 h-4 text-gray-400"/>
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-2 block">Raison du signalement</label>
+            <div className="space-y-2">
+              {REASONS.map(r => (
+                <button key={r.value} onClick={() => setReason(r.value)}
+                  className={cn(
+                    'w-full text-left px-3.5 py-2.5 rounded-xl border text-[13px] font-medium transition-all',
+                    reason === r.value
+                      ? 'border-red-300 bg-red-50 text-red-700'
+                      : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                  )}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Note (optionnel)</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)}
+              placeholder="Précisez le problème..."
+              rows={2}
+              className="w-full border border-gray-200 rounded-xl p-3 text-[13px] text-gray-700 resize-none focus:outline-none focus:border-red-300"/>
+          </div>
+
+          {error && <p className="text-[12.5px] text-red-500 font-medium">{error}</p>}
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <p className="text-[12px] text-amber-700 font-medium">
+              💡 Le lead sera archivé et votre demande de remboursement sera examinée sous 48h.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 p-5 pt-0">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[13px] font-medium text-gray-600 hover:bg-gray-50">
+            Annuler
+          </button>
+          <button onClick={handleSubmit} disabled={loading || !reason}
+            className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[13px] font-bold hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <AlertTriangle className="w-4 h-4"/>}
+            Envoyer le signalement
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Lead Card ─────────────────────────────────────────────────
 function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
   lead:Lead; onUpdate:(id:string,d:Record<string,unknown>)=>void
   onDelete:(id:string)=>void; onUnlock:UnlockFn
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const [saving,   setSaving]   = useState(false)
-  const [notes,    setNotes]    = useState(lead.notes ?? '')
+  const [expanded,   setExpanded]   = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [notes,      setNotes]      = useState(lead.notes ?? '')
+  const [showSignal, setShowSignal] = useState(false)
   const cfg   = STATUS_CFG[lead.status]
   const avail = totalAvailable(lead)
   const unlkd = totalUnlocked(lead)
@@ -212,7 +317,21 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {saving && <Loader2 className="w-3 h-3 text-indigo-400 animate-spin"/>}
-                <StatusDropdown status={lead.status} onUpdate={updateStatus}/>
+                {lead.refund_status === 'pending' && (
+                  <span className="flex items-center gap-1 text-[10.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+                    <RefreshCcw className="w-2.5 h-2.5"/>Remboursement en cours
+                  </span>
+                )}
+                {lead.refund_status !== 'pending' && (
+                  <StatusDropdown status={lead.status} onUpdate={updateStatus}/>
+                )}
+                {!lead.refund_status && (
+                  <button onClick={() => setShowSignal(true)}
+                    className="p-1.5 text-gray-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                    title="Signaler un problème">
+                    <AlertTriangle className="w-3.5 h-3.5"/>
+                  </button>
+                )}
                 <button onClick={del} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
                   <Trash2 className="w-3.5 h-3.5"/>
                 </button>
@@ -265,6 +384,14 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
           </div>
         </div>
       </div>
+
+      {showSignal && (
+        <SignalerModal
+          lead={lead}
+          onClose={() => setShowSignal(false)}
+          onSuccess={leadId => { onUpdate(leadId, { refund_status: 'pending', status: 'archived' }); setShowSignal(false) }}
+        />
+      )}
 
       {/* Notes panel */}
       {expanded && (
