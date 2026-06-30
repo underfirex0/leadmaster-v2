@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard, Users, Database, CreditCard, FileText,
-  Upload, Settings, LogOut, Target, Menu, X, Bell, Activity
+  Upload, Settings, LogOut, Target, Menu, X, Bell, Activity, AlertTriangle
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { href:'/admin/invoices',         label:'Factures',         icon:FileText },
   { href:'/admin/data-requests',    label:'Imports clients',  icon:Upload },
   { href:'/admin/analytics',        label:'Analytics',        icon:Activity },
+  { href:'/admin/signalements',     label:'Signalements',     icon:AlertTriangle },
 ]
 
 export default function AdminShell({ children, name, email, pendingCount, importsCount }: AdminShellProps) {
