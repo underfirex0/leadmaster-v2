@@ -3,6 +3,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
+// Cost per field — must stay in sync with constants.ts
+const FIELD_COSTS: Record<string, number> = {
+  basic:1, phone:1, email:1, address:1, website:1,
+  ice:2, annee_creation:2, director:2, effectif:2, capital:5,
+}
+
+// Compute the actual credits to refund
+// - For new searches: credits_spent is exact (fixed in execute route)
+// - For old searches: credits_spent was bugged (always 1), so we compute from fields array
+function computeRefund(creditsSpent: number, fields: string[]): number {
+  // If credits_spent looks correct (> 1 cr or only basic was requested), trust it
+  if (creditsSpent > 1) return creditsSpent
+
+  // Otherwise compute from fields array (slight overestimate — fields includes
+  // all requested fields even if no data, but it's the best we can do for old data)
+  const fromFields = fields.reduce((sum, f) => sum + (FIELD_COSTS[f] ?? 0), 0)
+  return fromFields > 0 ? fromFields : creditsSpent
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -16,7 +35,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') ?? 'pending'
 
-    // ── 1. Fetch refund requests ──────────────────────────────
     const { data: requests, error } = await supabaseAdmin
       .from('refund_requests')
       .select('*')
@@ -26,18 +44,12 @@ export async function GET(request: NextRequest) {
     if (error) throw error
     if (!requests?.length) return NextResponse.json({ requests: [] })
 
-    // ── 2. Fetch profiles separately (no FK join needed) ──────
+    // Fetch profiles separately (no FK join needed)
     const userIds = [...new Set(requests.map(r => r.user_id as string))]
     const { data: profiles } = await supabaseAdmin
-      .from('profiles')
-      .select('id, email, full_name')
-      .in('id', userIds)
+      .from('profiles').select('id, email, full_name').in('id', userIds)
+    const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id as string, p]))
 
-    const profileMap = Object.fromEntries(
-      (profiles ?? []).map(p => [p.id as string, p])
-    )
-
-    // ── 3. Merge ──────────────────────────────────────────────
     const enriched = requests.map(r => ({
       ...r,
       profiles: profileMap[r.user_id as string] ?? null,
@@ -75,19 +87,23 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
 
-    // Credits to refund
+    // ── Compute exact credits to refund ──────────────────────
     let creditsToRefund = 0
     if (company_id) {
       const { data: unlock } = await supabaseAdmin
         .from('company_unlocks')
-        .select('credits_spent')
+        .select('credits_spent, fields')
         .eq('user_id', user.id)
         .eq('company_id', company_id)
         .maybeSingle()
-      creditsToRefund = unlock?.credits_spent ?? 0
+
+      if (unlock) {
+        const fields = (unlock.fields as string[]) ?? []
+        creditsToRefund = computeRefund(unlock.credits_spent ?? 0, fields)
+      }
     }
 
-    // Create request
+    // Create refund request
     const { data: refundReq, error } = await supabaseAdmin
       .from('refund_requests')
       .insert({
@@ -101,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    // Auto-archive lead
+    // Auto-archive the CRM lead
     await supabaseAdmin
       .from('crm_leads')
       .update({ status: 'archived' })
@@ -110,7 +126,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true, request: refundReq, creditsToRefund,
-      message: `Signalement envoyé.${creditsToRefund > 0 ? ` ${creditsToRefund} cr seront remboursés après validation.` : ''}`,
+      message: `Signalement envoyé. ${creditsToRefund > 0 ? `${creditsToRefund} cr seront remboursés après validation.` : ''}`,
     })
   } catch (e) {
     console.error('POST refund-requests error:', e)

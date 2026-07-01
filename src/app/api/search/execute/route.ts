@@ -164,15 +164,20 @@ export async function POST(request: NextRequest) {
     const freeTrial   = !trialUsed && isBasicOnly && selected.length <= 100
 
     let totalCost = 0
+    const companyCostMap: Record<string, number> = {}
     if (!freeTrial) {
       for (const company of selected) {
         const cid = company.id as string
         const already = unlockMap[cid] ?? []
+        let companyCost = 0
         for (const field of allFields) {
           if (!already.includes(field) && hasData(company, field)) {
-            totalCost += FIELD_GROUPS[field as FieldGroupId]?.cost ?? 0
+            const fieldCost = FIELD_GROUPS[field as FieldGroupId]?.cost ?? 0
+            totalCost += fieldCost
+            companyCost += fieldCost
           }
         }
+        companyCostMap[cid] = companyCost
       }
     }
 
@@ -221,7 +226,7 @@ export async function POST(request: NextRequest) {
         const existing = unlockMap[cid] ?? []
         const merged   = [...new Set([...existing, ...allFields])]
         return { user_id: user.id, company_id: cid, query_id: queryId,
-                 credits_spent: FIELD_GROUPS['basic'].cost, fields: merged, unlocked_at: now }
+                 credits_spent: companyCostMap[cid] ?? FIELD_GROUPS['basic'].cost, fields: merged, unlocked_at: now }
       })
       await supabaseAdmin.from('company_unlocks')
         .upsert(rows, { onConflict: 'user_id,company_id' })
