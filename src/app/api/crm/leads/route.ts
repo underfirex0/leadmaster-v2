@@ -100,7 +100,21 @@ export async function GET(request: NextRequest) {
       fetchUnlocksByIds(user.id, companyIds),
     ])
 
-    // ── 3. Normalize + enrich each lead ──
+    // ── 3. Fetch refund statuses for leads ─────────────────
+    const leadIds = leads.map(l => l.id as string).filter(Boolean)
+    const refundMap: Record<string, string> = {}
+    if (leadIds.length) {
+      for (let i = 0; i < leadIds.length; i += 500) {
+        const batch = leadIds.slice(i, i + 500)
+        const { data: refunds } = await supabaseAdmin
+          .from('refund_requests')
+          .select('lead_id, status')
+          .in('lead_id', batch)
+        for (const r of refunds ?? []) refundMap[r.lead_id as string] = r.status as string
+      }
+    }
+
+    // ── 4. Normalize + enrich each lead ──
     const normalized = leads.map(lead => {
       const c   = lead.company_id ? (companyMap[lead.company_id] ?? null) : null
       const uf  = lead.company_id ? (unlockMap[lead.company_id]  ?? []) : []
@@ -141,10 +155,11 @@ export async function GET(request: NextRequest) {
         unlocked_fields:  uf,
         field_availability: avail,
         richness:         richnessScore(uf, avail),
+        refund_status:    (refundMap[lead.id as string] ?? null) as string|null,
       }
     })
 
-    // ── 4. Apply search filter ──
+    // ── 5. Apply search filter ──
     const filtered = q
       ? normalized.filter(l =>
           l.display_name?.toLowerCase().includes(q) ||
@@ -153,10 +168,10 @@ export async function GET(request: NextRequest) {
         )
       : normalized
 
-    // ── 5. Sort by richness (most data first) ──
+    // ── 6. Sort by richness (most data first) ──
     filtered.sort((a, b) => b.richness - a.richness)
 
-    // ── 6. Status counts (paginated, from ALL leads for accuracy) ──
+    // ── 7. Status counts (paginated, from ALL leads for accuracy) ──
     const allForCounts = await fetchAll(
       supabaseAdmin.from('crm_leads').select('status').eq('user_id', user.id)
     )

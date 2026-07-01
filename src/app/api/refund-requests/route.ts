@@ -9,20 +9,41 @@ export async function GET(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-    // Admin only
-    const { data: profile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', user.id).single()
+    const { data: profile } = await supabaseAdmin
+      .from('profiles').select('is_admin').eq('id', user.id).single()
     if (!profile?.is_admin) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') ?? 'pending'
 
-    const { data: requests } = await supabaseAdmin
+    // ── 1. Fetch refund requests ──────────────────────────────
+    const { data: requests, error } = await supabaseAdmin
       .from('refund_requests')
-      .select('*, profiles:user_id(email, full_name)')
+      .select('*')
       .eq('status', status)
       .order('created_at', { ascending: false })
 
-    return NextResponse.json({ requests: requests ?? [] })
+    if (error) throw error
+    if (!requests?.length) return NextResponse.json({ requests: [] })
+
+    // ── 2. Fetch profiles separately (no FK join needed) ──────
+    const userIds = [...new Set(requests.map(r => r.user_id as string))]
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, full_name')
+      .in('id', userIds)
+
+    const profileMap = Object.fromEntries(
+      (profiles ?? []).map(p => [p.id as string, p])
+    )
+
+    // ── 3. Merge ──────────────────────────────────────────────
+    const enriched = requests.map(r => ({
+      ...r,
+      profiles: profileMap[r.user_id as string] ?? null,
+    }))
+
+    return NextResponse.json({ requests: enriched })
   } catch (e) {
     console.error('GET refund-requests error:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
@@ -38,13 +59,13 @@ export async function POST(request: NextRequest) {
     const { lead_id, company_id, company_name, reason, note } = await request.json()
     if (!lead_id || !reason) return NextResponse.json({ error: 'lead_id et reason requis' }, { status: 400 })
 
-    // Check no duplicate request for this company
+    // Check for duplicate
     const { data: existing } = await supabaseAdmin
       .from('refund_requests')
       .select('id, status')
       .eq('user_id', user.id)
       .eq('company_id', company_id)
-      .single()
+      .maybeSingle()
 
     if (existing) {
       return NextResponse.json({
@@ -54,7 +75,7 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
 
-    // Calculate credits to refund from company_unlocks
+    // Credits to refund
     let creditsToRefund = 0
     if (company_id) {
       const { data: unlock } = await supabaseAdmin
@@ -62,29 +83,25 @@ export async function POST(request: NextRequest) {
         .select('credits_spent')
         .eq('user_id', user.id)
         .eq('company_id', company_id)
-        .single()
+        .maybeSingle()
       creditsToRefund = unlock?.credits_spent ?? 0
     }
 
-    // Create refund request
+    // Create request
     const { data: refundReq, error } = await supabaseAdmin
       .from('refund_requests')
       .insert({
-        user_id:          user.id,
-        company_id,
-        lead_id,
-        company_name,
-        reason,
-        note:             note || null,
+        user_id: user.id, company_id, lead_id, company_name,
+        reason, note: note || null,
         credits_to_refund: creditsToRefund,
-        status:           'pending',
+        status: 'pending',
       })
       .select()
       .single()
 
     if (error) throw error
 
-    // Auto-archive the CRM lead
+    // Auto-archive lead
     await supabaseAdmin
       .from('crm_leads')
       .update({ status: 'archived' })
@@ -92,10 +109,8 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
 
     return NextResponse.json({
-      success: true,
-      request: refundReq,
-      creditsToRefund,
-      message: `Signalement envoyé. ${creditsToRefund > 0 ? `${creditsToRefund} cr seront remboursés après validation.` : ''}`,
+      success: true, request: refundReq, creditsToRefund,
+      message: `Signalement envoyé.${creditsToRefund > 0 ? ` ${creditsToRefund} cr seront remboursés après validation.` : ''}`,
     })
   } catch (e) {
     console.error('POST refund-requests error:', e)
