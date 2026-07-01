@@ -67,7 +67,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/meetings') ||
     pathname.startsWith('/master') ||
     pathname.startsWith('/account') ||
-    pathname.startsWith('/databases')
+    pathname.startsWith('/databases') ||
+    pathname.startsWith('/data-pro')
 
   const isAuthRoute =
     pathname.startsWith('/login') ||
