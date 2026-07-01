@@ -4,7 +4,7 @@ import {
   Phone, Mail, Globe, User, MapPin, ChevronDown, ChevronUp,
   Search, Loader2, Trash2, RefreshCw, X, Users2, ArrowRight,
   Lock, Building2, Calendar, DollarSign, Star, TrendingUp,
-  MessageSquare, Check, AlertTriangle, RefreshCcw
+  MessageSquare, Check, AlertTriangle, RefreshCcw, Crown, Sparkles
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -35,6 +35,9 @@ type Lead = {
   field_availability:Record<string,boolean>
   richness:number
   refund_status?: 'pending'|'approved'|'rejected'|null
+  is_pro?: boolean
+  pro_dataset_name?: string | null
+  pro_extra_fields?: { key:string; label:string; value:string }[]
 }
 
 function timeAgo(d:string) {
@@ -309,6 +312,11 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
               <div className="min-w-0">
                 <h3 className="font-bold text-[14.5px] text-gray-900 leading-tight truncate">{lead.display_name}</h3>
                 <div className="flex items-center gap-2 text-[11.5px] text-gray-400 flex-wrap mt-0.5">
+                  {lead.is_pro && (
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                      <Crown className="w-2.5 h-2.5" />PRO
+                    </span>
+                  )}
                   {lead.display_city   && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3"/>{lead.display_city}</span>}
                   {lead.display_sector && <><span className="text-gray-200">·</span><span className="truncate max-w-[140px]">{lead.display_sector}</span></>}
                   <span className="text-gray-200">·</span>
@@ -376,8 +384,11 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
               )}
               <button onClick={() => setExpanded(!expanded)}
                 className="ml-auto flex items-center gap-1 text-[12px] text-gray-400 hover:text-gray-600 transition-colors">
-                <MessageSquare className="w-3.5 h-3.5"/>
-                Notes
+                {lead.is_pro && (lead.pro_extra_fields?.length ?? 0) > 0 ? (
+                  <><Sparkles className="w-3.5 h-3.5 text-amber-500" /><span className="text-amber-600 font-medium">Fiche complète ({lead.pro_extra_fields!.length})</span></>
+                ) : (
+                  <><MessageSquare className="w-3.5 h-3.5" />Notes</>
+                )}
                 {expanded ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3"/>}
               </button>
             </div>
@@ -396,6 +407,21 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
       {/* Notes panel */}
       {expanded && (
         <div className="border-t border-gray-100 p-4 bg-gray-50/60 space-y-3">
+          {lead.is_pro && (lead.pro_extra_fields?.length ?? 0) > 0 && (
+            <div className="bg-white rounded-xl border border-amber-100 p-3.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 uppercase tracking-wide mb-2.5">
+                <Crown className="w-3 h-3" />{lead.pro_dataset_name || 'DATA Pro'}
+              </div>
+              <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2.5">
+                {lead.pro_extra_fields!.map(f => (
+                  <div key={f.key} className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{f.label}</div>
+                    <div className="text-[12.5px] text-gray-700 whitespace-pre-line break-words">{f.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <textarea
             value={notes} onChange={e => setNotes(e.target.value)} onBlur={saveNotes}
             rows={3} placeholder="Ajouter une note sur ce lead..."

@@ -19,7 +19,9 @@ export async function POST(request: NextRequest, { params }: P) {
     const { company_ids } = await request.json()
     if (!company_ids?.length) return NextResponse.json({ error: 'company_ids requis' }, { status: 400 })
 
-    const { data: dataset } = await supabaseAdmin.from('datasets').select('name').eq('id', params.id).single()
+    const { data: dataset } = await supabaseAdmin.from('datasets').select('name, field_schema').eq('id', params.id).single()
+    const fieldLabels: Record<string, string> = {}
+    for (const f of (dataset?.field_schema as { key: string; label: string }[]) ?? []) fieldLabels[f.key] = f.label
 
     const companies: Record<string, unknown>[] = []
     for (let i = 0; i < company_ids.length; i += CHUNK) {
@@ -66,6 +68,18 @@ export async function POST(request: NextRequest, { params }: P) {
           dataset_id: params.id,
           dataset_name: dataset?.name ?? 'DATA Pro',
           is_pro: true,
+          field_labels: fieldLabels,
+          // Standard fields explicitly (crm_leads has no dedicated columns for these,
+          // so we store them here — the CRM API reads them back out for is_pro leads).
+          ice: c.ice ?? null,
+          rc: c.rc ?? null,
+          capital: c.capital ?? null,
+          effectif: c.effectif ?? null,
+          address_raw: c.address_raw ?? null,
+          forme_juridique: c.forme_juridique ?? null,
+          annee_creation: c.annee_creation ?? null,
+          phone_2: c.phone_2 ?? null,
+          // Everything dataset-specific (director contacts, financials, ESG, etc.)
           ...(c.extra_fields as Record<string, unknown> ?? {}),
         },
       }))

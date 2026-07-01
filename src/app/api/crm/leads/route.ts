@@ -115,10 +115,14 @@ export async function GET(request: NextRequest) {
     }
 
     // ── 4. Normalize + enrich each lead ──
+    const STD_KEYS = new Set(['dataset_row_id','dataset_id','dataset_name','is_pro','field_labels','ice','rc','capital','effectif','address_raw','forme_juridique','annee_creation','phone_2'])
+
     const normalized = leads.map(lead => {
       const c   = lead.company_id ? (companyMap[lead.company_id] ?? null) : null
       const uf  = lead.company_id ? (unlockMap[lead.company_id]  ?? []) : []
       const avail = computeAvailability(c)
+      const cf = (lead.custom_fields as Record<string, unknown>) ?? {}
+      const isPro = !!cf.is_pro
 
       // Only surface field values the user has paid to unlock
       const phoneVal    = uf.includes('phone')          ? (c?.phone_1 || c?.phone_2 || null)  : null
@@ -137,6 +141,22 @@ export async function GET(request: NextRequest) {
       const display_website = lead.website || websiteVal || null
       const display_director = lead.contact_name || directorVal || null
 
+      // DATA Pro leads have no company_id — all "legal/financial" values live in custom_fields instead
+      const display_ice      = isPro ? ((cf.ice as string) || null)       : iceVal
+      const display_annee    = isPro ? ((cf.annee_creation as string) || null) : anneeVal
+      const display_effectif = isPro ? ((cf.effectif as string) || null)  : effectifVal
+      const display_capital  = isPro ? ((cf.capital as string) || null)   : capitalVal
+      const display_address  = isPro ? ((cf.address_raw as string) || null) : addressVal
+
+      // Everything dataset-specific (director contacts blocks, financials, ESG, positioning...)
+      // that isn't already shown as a standard field above.
+      const fieldLabels = (cf.field_labels as Record<string, string>) ?? {}
+      const proExtraFields = isPro
+        ? Object.entries(cf)
+            .filter(([k, v]) => !STD_KEYS.has(k) && v !== null && v !== '' && v !== undefined)
+            .map(([k, v]) => ({ key: k, label: fieldLabels[k] ?? k, value: String(v) }))
+        : []
+
       return {
         ...lead,
         display_name:     lead.company_name || (c?.name as string) || '—',
@@ -146,16 +166,19 @@ export async function GET(request: NextRequest) {
         display_email,
         display_website,
         display_director,
-        display_ice:      iceVal,
-        display_address:  addressVal,
-        display_capital:  capitalVal,
-        display_annee:    anneeVal,
-        display_effectif: effectifVal,
+        display_ice,
+        display_address,
+        display_capital,
+        display_annee,
+        display_effectif,
         display_activities: c?.activities ?? null,
         unlocked_fields:  uf,
         field_availability: avail,
-        richness:         richnessScore(uf, avail),
+        richness:         richnessScore(uf, avail) + (isPro ? 100 : 0), // Pro leads always float to top
         refund_status:    (refundMap[lead.id as string] ?? null) as string|null,
+        is_pro:           isPro,
+        pro_dataset_name: isPro ? ((cf.dataset_name as string) ?? 'DATA Pro') : null,
+        pro_extra_fields: proExtraFields,
       }
     })
 
