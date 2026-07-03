@@ -2,427 +2,786 @@
 
 import { useState, useEffect, useRef, RefObject } from 'react'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
 import gsap from 'gsap'
 import {
-  ArrowRight, Check, ChevronDown, X, Menu,
-  Search, Lock, Users2, Download, Sparkles,
-  Crown, MapPin, Target, Shield, Star,
-  PlayCircle, Globe, BarChart2, CalendarClock, Filter, Unlock
+  ArrowRight, Check, ChevronDown, X, Menu, Lock,
+  Phone, Mail, User, Building2, Users2, DollarSign,
+  Target, MapPin, ShieldCheck, Search, Filter, Download
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
-// No ScrollTrigger — using IntersectionObserver instead (production-safe)
-const HeroCanvas = dynamic(
-  () => import('@/components/landing/HeroCanvas'),
-  { ssr: false, loading: () => null }
-)
+/* ═══════════════════════════════════════════════════════════
+   LeadMaster — Landing 3.0
+   Majorelle night → warm paper · Bricolage Grotesque · DM Mono
+   Signature: the self-unlocking company card
+═══════════════════════════════════════════════════════════ */
 
-// ─── Shared reveal hook (IntersectionObserver) ─────────────
-function useReveal(ref: RefObject<HTMLElement | null>, selector = '.reveal-item') {
-  useEffect(() => {
-    const el = ref.current
-    if (!el || typeof IntersectionObserver === 'undefined') {
-      // Fallback: make everything visible immediately
-      ref.current?.querySelectorAll(selector).forEach(el => el.classList.add('revealed'))
-      return
-    }
-    const items = Array.from(el.querySelectorAll<HTMLElement>(selector))
-    const observer = new IntersectionObserver(
-      entries => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('revealed'); observer.unobserve(e.target) } }),
-      { threshold: 0.08, rootMargin: '0px 0px -40px 0px' }
-    )
-    items.forEach(item => observer.observe(item))
-    return () => observer.disconnect()
-  }, [ref, selector])
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --paper:      #FBFAF6;
+  --paper-2:    #F4F2EA;
+  --sable:      #EDE8DC;
+  --ink:        #12111F;
+  --ink-2:      #45445C;
+  --ink-3:      #77768C;
+  --night:      #14123A;
+  --night-2:    #1C1950;
+  --majorelle:  #4F46E5;
+  --maj-hot:    #6D64FF;
+  --maj-soft:   #B9B4FF;
+  --mint:       #0FA37F;
+  --gold:       #D9A036;
+  --line:       rgba(18,17,31,0.09);
+  --line-night: rgba(255,255,255,0.10);
+  --font-disp:  'Bricolage Grotesque', 'Inter', sans-serif;
+  --font-body:  'Inter', system-ui, sans-serif;
+  --font-mono:  'DM Mono', ui-monospace, monospace;
+  --ease:       cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-// ─── Announcement Bar ──────────────────────────────────────
-function AnnouncementBar({ onDismiss }: { onDismiss: () => void }) {
+.lm { font-family: var(--font-body); background: var(--paper); color: var(--ink); overflow-x: clip; }
+.lm *, .lm *::before, .lm *::after { box-sizing: border-box; }
+.lm ::selection { background: var(--majorelle); color: #fff; }
+
+/* ── Reveal system ── */
+.lm-reveal { opacity: 0; transform: translateY(26px); transition: opacity .9s var(--ease), transform .9s var(--ease); }
+.lm-reveal.on { opacity: 1; transform: none; }
+.lm-reveal[data-d="1"] { transition-delay: .08s; }
+.lm-reveal[data-d="2"] { transition-delay: .16s; }
+.lm-reveal[data-d="3"] { transition-delay: .24s; }
+.lm-reveal[data-d="4"] { transition-delay: .32s; }
+
+/* ── Nav ── */
+.lm-nav { position: fixed; inset: 0 0 auto 0; z-index: 60; padding: 14px 20px 0; }
+.lm-nav-pill {
+  max-width: 1140px; margin: 0 auto; height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px 0 18px; border-radius: 999px;
+  background: rgba(251,250,246,0.86); backdrop-filter: blur(16px);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 30px rgba(18,17,31,0.08);
+  transition: box-shadow .3s var(--ease);
+}
+.lm-nav-links { display: flex; gap: 2px; }
+.lm-nav-links a {
+  font-size: 13.5px; font-weight: 500; color: var(--ink-2);
+  padding: 8px 14px; border-radius: 999px; text-decoration: none;
+  transition: background .18s, color .18s;
+}
+.lm-nav-links a:hover { background: var(--paper-2); color: var(--ink); }
+.lm-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
+.lm-logo-mark {
+  width: 28px; height: 28px; border-radius: 9px; background: var(--majorelle);
+  display: grid; place-items: center; color: #fff;
+}
+.lm-logo span { font-family: var(--font-disp); font-weight: 700; font-size: 16px; letter-spacing: -0.3px; color: var(--ink); }
+
+/* ── Buttons ── */
+.lm-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 600; text-decoration: none;
+  border-radius: 999px; padding: 12px 22px; cursor: pointer; border: 0;
+  transition: transform .2s var(--ease), box-shadow .2s var(--ease), background .2s;
+}
+.lm-btn:active { transform: scale(0.97); }
+.lm-btn-primary { background: var(--majorelle); color: #fff; box-shadow: 0 6px 22px rgba(79,70,229,0.35); }
+.lm-btn-primary:hover { background: #4238d6; transform: translateY(-1px); box-shadow: 0 10px 30px rgba(79,70,229,0.42); }
+.lm-btn-ghost-dark { background: rgba(255,255,255,0.07); color: #fff; border: 1px solid var(--line-night); }
+.lm-btn-ghost-dark:hover { background: rgba(255,255,255,0.13); }
+.lm-btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.lm-btn-ghost:hover { background: var(--paper-2); }
+.lm-btn-sm { padding: 9px 16px; font-size: 13px; }
+
+/* ── Hero ── */
+.lm-hero {
+  position: relative; background: var(--night); color: #fff;
+  padding: 168px 24px 120px; overflow: clip;
+}
+.lm-hero::before {
+  content: ''; position: absolute; inset: 0; opacity: .5; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='84' height='84' viewBox='0 0 84 84' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M42 30l3.5 8.5L54 42l-8.5 3.5L42 54l-3.5-8.5L30 42l8.5-3.5z' fill='%236D64FF' fill-opacity='0.10'/%3E%3C/svg%3E");
+}
+.lm-hero::after {
+  content: ''; position: absolute; inset: auto -20% -55% -20%; height: 75%;
+  background: radial-gradient(ellipse at center, rgba(109,100,255,0.34), transparent 65%);
+  pointer-events: none;
+}
+.lm-hero-inner {
+  position: relative; max-width: 1140px; margin: 0 auto;
+  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 64px; align-items: center;
+}
+.lm-eyebrow {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--maj-soft);
+}
+.lm-hero h1 {
+  font-family: var(--font-disp);
+  font-size: clamp(42px, 5.6vw, 74px);
+  font-weight: 700; line-height: 1.02; letter-spacing: -2.2px;
+  margin: 22px 0 0;
+}
+.lm-hero .lm-odometer {
+  font-family: var(--font-mono); font-weight: 500;
+  color: var(--maj-hot); font-variant-numeric: tabular-nums;
+  display: inline-block; min-width: 5.6ch;
+}
+.lm-hero-sub {
+  margin-top: 24px; max-width: 480px;
+  font-size: 16.5px; line-height: 1.7; color: rgba(255,255,255,0.68);
+}
+.lm-hero-ctas { display: flex; gap: 12px; margin-top: 36px; flex-wrap: wrap; }
+.lm-hero-meta {
+  display: flex; gap: 26px; margin-top: 44px; flex-wrap: wrap;
+}
+.lm-hero-meta div { display: flex; flex-direction: column; gap: 3px; }
+.lm-hero-meta b { font-family: var(--font-mono); font-size: 17px; font-weight: 500; color: #fff; }
+.lm-hero-meta span { font-size: 12px; color: rgba(255,255,255,0.45); }
+
+/* ── Unlock card (signature) ── */
+.lm-card {
+  position: relative; background: #fff; color: var(--ink);
+  border-radius: 24px; padding: 24px;
+  box-shadow: 0 30px 80px rgba(8,6,40,0.55), 0 2px 0 rgba(255,255,255,0.08) inset;
+  animation: lm-float 7s ease-in-out infinite;
+}
+@keyframes lm-float { 0%,100% { transform: translateY(0) rotate(-0.4deg); } 50% { transform: translateY(-12px) rotate(0.4deg); } }
+.lm-card-head { display: flex; align-items: flex-start; gap: 13px; }
+.lm-card-avatar {
+  width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--majorelle), var(--maj-hot));
+  color: #fff; display: grid; place-items: center;
+  font-family: var(--font-disp); font-weight: 700; font-size: 15px;
+}
+.lm-card-head h3 { margin: 0; font-size: 15.5px; font-weight: 700; letter-spacing: -0.2px; }
+.lm-card-head p { margin: 3px 0 0; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 5px; }
+.lm-chip-verified {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 700; color: var(--mint);
+  background: rgba(15,163,127,0.10); border: 1px solid rgba(15,163,127,0.25);
+  border-radius: 999px; padding: 4px 9px; white-space: nowrap;
+}
+.lm-fields { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.lm-field {
+  position: relative; border: 1px solid var(--line); border-radius: 13px;
+  padding: 10px 12px; min-height: 58px; overflow: hidden;
+  transition: border-color .5s var(--ease), background .5s var(--ease);
+}
+.lm-field .lm-field-label {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1.2px;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.lm-field .lm-field-locked, .lm-field .lm-field-value {
+  margin-top: 5px; font-size: 12.5px; transition: opacity .45s var(--ease), transform .45s var(--ease);
+}
+.lm-field .lm-field-locked { display: flex; align-items: center; gap: 6px; color: var(--ink-3); }
+.lm-field .lm-field-locked i {
+  font-style: normal; filter: blur(4.5px); user-select: none; letter-spacing: 1px;
+}
+.lm-field .lm-field-value {
+  position: absolute; left: 12px; right: 12px; bottom: 10px;
+  font-weight: 600; color: var(--ink); opacity: 0; transform: translateY(8px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lm-field.unlocked { border-color: rgba(15,163,127,0.45); background: rgba(15,163,127,0.045); }
+.lm-field.unlocked .lm-field-locked { opacity: 0; transform: translateY(-8px); }
+.lm-field.unlocked .lm-field-value { opacity: 1; transform: none; }
+.lm-field .lm-cost-pop {
+  position: absolute; top: 8px; right: 10px;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; color: var(--majorelle);
+  opacity: 0; transform: translateY(4px);
+}
+.lm-field.unlocked .lm-cost-pop { animation: lm-pop 1.6s var(--ease) forwards; }
+@keyframes lm-pop { 0% {opacity:0; transform:translateY(6px);} 18% {opacity:1; transform:none;} 75% {opacity:1;} 100% {opacity:0; transform:translateY(-8px);} }
+.lm-card-foot {
+  margin-top: 18px; padding-top: 15px; border-top: 1px dashed var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.lm-card-credits { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); }
+.lm-card-credits b { color: var(--majorelle); font-weight: 500; font-variant-numeric: tabular-nums; }
+.lm-card-cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: #fff; background: var(--ink);
+  border-radius: 999px; padding: 8px 14px;
+  opacity: 0; transform: translateY(6px); transition: opacity .5s var(--ease), transform .5s var(--ease);
+}
+.lm-card-cta.show { opacity: 1; transform: none; }
+
+/* ── Ticker ── */
+.lm-ticker { background: var(--night); padding: 0 0 0; overflow: hidden; border-top: 1px solid var(--line-night); }
+.lm-ticker-track {
+  display: flex; gap: 10px; width: max-content; padding: 18px 0;
+  animation: lm-marquee 46s linear infinite;
+}
+.lm-ticker:hover .lm-ticker-track { animation-play-state: paused; }
+@keyframes lm-marquee { to { transform: translateX(-50%); } }
+.lm-tick {
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 12px; color: rgba(255,255,255,0.55);
+  border: 1px solid var(--line-night); border-radius: 999px; padding: 8px 15px;
+}
+.lm-tick b { color: var(--maj-soft); font-weight: 500; }
+
+/* ── Sections ── */
+.lm-section { padding: 110px 24px; }
+.lm-wrap { max-width: 1140px; margin: 0 auto; }
+.lm-kicker {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--majorelle);
+}
+.lm-h2 {
+  font-family: var(--font-disp); font-size: clamp(32px, 4vw, 50px);
+  font-weight: 700; letter-spacing: -1.6px; line-height: 1.06; margin: 16px 0 0;
+}
+.lm-lead { font-size: 16px; line-height: 1.7; color: var(--ink-2); max-width: 560px; margin-top: 18px; }
+
+/* ── Steps ── */
+.lm-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 64px; }
+.lm-step {
+  background: #fff; border: 1px solid var(--line); border-radius: 22px;
+  padding: 28px 26px 26px; position: relative;
+  transition: transform .35s var(--ease), box-shadow .35s var(--ease);
+}
+.lm-step:hover { transform: translateY(-6px); box-shadow: 0 24px 50px rgba(18,17,31,0.10); }
+.lm-step-num {
+  font-family: var(--font-mono); font-size: 12px; color: var(--majorelle);
+  letter-spacing: 2px;
+}
+.lm-step h3 { font-family: var(--font-disp); font-size: 21px; font-weight: 700; letter-spacing: -0.5px; margin: 14px 0 10px; }
+.lm-step p { font-size: 14px; line-height: 1.65; color: var(--ink-2); margin: 0; }
+.lm-step-visual {
+  margin-top: 22px; background: var(--paper); border: 1px solid var(--line);
+  border-radius: 14px; padding: 14px; font-size: 12px;
+}
+.lm-mini-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 4px; border-bottom: 1px dashed var(--line); }
+.lm-mini-row:last-child { border-bottom: 0; }
+.lm-mini-row span { display: flex; align-items: center; gap: 7px; color: var(--ink-2); font-weight: 500; }
+.lm-mini-row b { font-family: var(--font-mono); font-weight: 500; color: var(--ink-3); font-size: 11.5px; }
+.lm-mini-count { font-family: var(--font-mono); color: var(--majorelle) !important; }
+.lm-mini-status { font-size: 10px; font-weight: 700; border-radius: 999px; padding: 3px 8px; }
+
+/* ── Data menu (tarif) ── */
+.lm-menu-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 64px; align-items: center; margin-top: 8px; }
+.lm-menu {
+  background: var(--night); color: #fff; border-radius: 26px; padding: 36px 34px;
+  position: relative; overflow: hidden;
+}
+.lm-menu::before {
+  content: ''; position: absolute; inset: -40% -40% auto auto; width: 70%; height: 120%;
+  background: radial-gradient(ellipse, rgba(109,100,255,0.28), transparent 70%);
+}
+.lm-menu h3 {
+  position: relative; font-family: var(--font-disp); font-size: 15px; font-weight: 600;
+  letter-spacing: 2.5px; text-transform: uppercase; color: var(--maj-soft);
+  margin: 0 0 22px; text-align: center;
+}
+.lm-menu-row {
+  position: relative; display: flex; align-items: baseline; gap: 10px;
+  padding: 11px 0; font-size: 14px;
+}
+.lm-menu-row .dots { flex: 1; border-bottom: 1.5px dotted rgba(255,255,255,0.22); transform: translateY(-4px); }
+.lm-menu-row b { font-family: var(--font-mono); font-weight: 500; color: var(--maj-hot); white-space: nowrap; }
+.lm-menu-note {
+  position: relative; margin-top: 22px; padding-top: 18px;
+  border-top: 1px solid var(--line-night);
+  font-size: 12.5px; line-height: 1.65; color: rgba(255,255,255,0.55); text-align: center;
+}
+.lm-menu-note b { color: var(--mint); font-weight: 600; }
+
+/* ── Guarantee band ── */
+.lm-band {
+  background: linear-gradient(120deg, var(--majorelle), var(--maj-hot));
+  border-radius: 28px; padding: 56px 48px; color: #fff;
+  display: flex; align-items: center; justify-content: space-between; gap: 40px;
+  box-shadow: 0 30px 70px rgba(79,70,229,0.35);
+}
+.lm-band h2 { font-family: var(--font-disp); font-size: clamp(26px, 3.2vw, 40px); font-weight: 700; letter-spacing: -1.2px; margin: 0; line-height: 1.1; }
+.lm-band p { margin: 12px 0 0; font-size: 15px; color: rgba(255,255,255,0.82); max-width: 480px; line-height: 1.65; }
+.lm-band .lm-btn { background: #fff; color: var(--majorelle); flex-shrink: 0; }
+.lm-band .lm-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.2); }
+
+/* ── Pricing ── */
+.lm-plans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 60px; }
+.lm-plan {
+  background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 28px 24px;
+  display: flex; flex-direction: column;
+  transition: transform .35s var(--ease), box-shadow .35s var(--ease), border-color .35s;
+}
+.lm-plan:hover { transform: translateY(-6px); box-shadow: 0 24px 50px rgba(18,17,31,0.10); }
+.lm-plan.hot { border-color: var(--majorelle); box-shadow: 0 20px 50px rgba(79,70,229,0.18); position: relative; }
+.lm-plan-badge {
+  position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  background: var(--majorelle); color: #fff; border-radius: 999px; padding: 5px 13px;
+}
+.lm-plan h3 { font-family: var(--font-disp); font-size: 17px; font-weight: 700; margin: 0; }
+.lm-plan-price { margin-top: 16px; display: flex; align-items: baseline; gap: 5px; }
+.lm-plan-price b { font-family: var(--font-mono); font-size: 34px; font-weight: 500; letter-spacing: -1px; }
+.lm-plan-price span { font-size: 12.5px; color: var(--ink-3); }
+.lm-plan-credits {
+  margin-top: 6px; font-family: var(--font-mono); font-size: 12.5px; color: var(--majorelle);
+}
+.lm-plan ul { margin: 20px 0 24px; padding: 0; list-style: none; display: grid; gap: 9px; flex: 1; }
+.lm-plan li { display: flex; gap: 8px; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+.lm-plan li svg { flex-shrink: 0; margin-top: 2px; color: var(--mint); }
+
+/* ── FAQ ── */
+.lm-faq { max-width: 720px; margin: 56px auto 0; display: grid; gap: 10px; }
+.lm-faq-item { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.lm-faq-q {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: none; border: 0; cursor: pointer; text-align: left;
+  padding: 19px 22px; font-size: 15px; font-weight: 600; color: var(--ink);
+  font-family: var(--font-body);
+}
+.lm-faq-q svg { flex-shrink: 0; transition: transform .3s var(--ease); color: var(--ink-3); }
+.lm-faq-item.open .lm-faq-q svg { transform: rotate(180deg); }
+.lm-faq-a {
+  max-height: 0; overflow: hidden; transition: max-height .45s var(--ease);
+}
+.lm-faq-a p { margin: 0; padding: 0 22px 20px; font-size: 14px; line-height: 1.7; color: var(--ink-2); }
+.lm-faq-item.open .lm-faq-a { max-height: 220px; }
+
+/* ── Final CTA ── */
+.lm-final {
+  background: var(--night); color: #fff; border-radius: 32px;
+  padding: 90px 48px; text-align: center; position: relative; overflow: hidden;
+}
+.lm-final::before {
+  content: ''; position: absolute; inset: 0; opacity: .45;
+  background-image: url("data:image/svg+xml,%3Csvg width='84' height='84' viewBox='0 0 84 84' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M42 30l3.5 8.5L54 42l-8.5 3.5L42 54l-3.5-8.5L30 42l8.5-3.5z' fill='%236D64FF' fill-opacity='0.12'/%3E%3C/svg%3E");
+}
+.lm-final::after {
+  content: ''; position: absolute; inset: auto -30% -70% -30%; height: 100%;
+  background: radial-gradient(ellipse, rgba(109,100,255,0.4), transparent 65%);
+}
+.lm-final > * { position: relative; z-index: 1; }
+.lm-final h2 { font-family: var(--font-disp); font-size: clamp(34px, 4.6vw, 58px); font-weight: 700; letter-spacing: -1.8px; margin: 0; line-height: 1.05; }
+.lm-final p { margin: 18px auto 0; font-size: 16px; color: rgba(255,255,255,0.65); max-width: 460px; line-height: 1.7; }
+
+/* ── Footer ── */
+.lm-footer { padding: 56px 24px 40px; border-top: 1px solid var(--line); }
+.lm-footer-inner { max-width: 1140px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.lm-footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+.lm-footer-links a { font-size: 13px; color: var(--ink-3); text-decoration: none; }
+.lm-footer-links a:hover { color: var(--ink); }
+.lm-footer small { font-size: 12px; color: var(--ink-4, #9a9a9a); font-family: var(--font-mono); }
+
+/* ── Mobile ── */
+.lm-mobile-menu {
+  margin: 8px auto 0; max-width: 1140px; background: #fff; border: 1px solid var(--line);
+  border-radius: 20px; padding: 12px; box-shadow: 0 16px 50px rgba(18,17,31,0.14);
+  display: grid; gap: 2px;
+}
+.lm-mobile-menu a {
+  padding: 13px 16px; border-radius: 12px; font-size: 14.5px; font-weight: 500;
+  color: var(--ink); text-decoration: none;
+}
+.lm-mobile-menu a:hover { background: var(--paper-2); }
+
+@media (max-width: 1000px) {
+  .lm-hero-inner { grid-template-columns: 1fr; gap: 56px; }
+  .lm-hero { padding: 140px 20px 90px; }
+  .lm-steps { grid-template-columns: 1fr; }
+  .lm-menu-grid { grid-template-columns: 1fr; gap: 40px; }
+  .lm-plans { grid-template-columns: repeat(2, 1fr); }
+  .lm-band { flex-direction: column; align-items: flex-start; padding: 44px 32px; }
+}
+@media (max-width: 620px) {
+  .lm-plans { grid-template-columns: 1fr; }
+  .lm-fields { grid-template-columns: 1fr; }
+  .lm-section { padding: 80px 20px; }
+  .lm-final { padding: 70px 24px; border-radius: 24px; }
+  .lm-nav-links { display: none; }
+  .lm-nav-cta-desktop { display: none !important; }
+}
+@media (min-width: 621px) {
+  .lm-nav-burger { display: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lm *, .lm *::before, .lm *::after { animation: none !important; transition-duration: .01ms !important; }
+  .lm-reveal { opacity: 1; transform: none; }
+}
+`
+
+/* ─── Zellige 8-point star ornament ──────────────────────── */
+function Star8({ size = 12, color = 'currentColor' }: { size?: number; color?: string }) {
   return (
-    <div className="relative bg-brand-600 text-white text-[13px] py-2.5 px-4 flex items-center justify-center gap-3">
-      <span className="relative flex h-2 w-2">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-200 opacity-75" />
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
-      </span>
-      <span className="font-medium hidden sm:inline">MeetMaster est live — rencontrez des décideurs marocains en 48h.</span>
-      <span className="font-medium sm:hidden">MeetMaster est live.</span>
-      <Link href="/meetmaster" className="font-semibold underline underline-offset-2 hover:no-underline whitespace-nowrap">Découvrir →</Link>
-      <button onClick={onDismiss} aria-label="Fermer" className="absolute right-4 top-1/2 -translate-y-1/2 opacity-60 hover:opacity-100 transition-opacity">
-        <X className="w-4 h-4" />
-      </button>
-    </div>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2z" fill={color} />
+    </svg>
   )
 }
 
-// ─── Navigation ────────────────────────────────────────────
-function Nav({ hasBar }: { hasBar: boolean }) {
-  const [scrolled, setScrolled] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+/* ─── Scroll reveal ──────────────────────────────────────── */
+function useReveal(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
-    const h = () => setScrolled(window.scrollY > 20)
-    window.addEventListener('scroll', h, { passive: true })
-    return () => window.removeEventListener('scroll', h)
-  }, [])
+    const root = ref.current
+    if (!root) return
+    const items = Array.from(root.querySelectorAll<HTMLElement>('.lm-reveal'))
+    if (typeof IntersectionObserver === 'undefined') {
+      items.forEach(el => el.classList.add('on')); return
+    }
+    const io = new IntersectionObserver(
+      es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('on'); io.unobserve(e.target) } }),
+      { threshold: 0.1, rootMargin: '0px 0px -50px 0px' }
+    )
+    items.forEach(el => io.observe(el))
+    return () => io.disconnect()
+  }, [ref])
+}
+
+/* ─── Navigation ─────────────────────────────────────────── */
+function Nav() {
+  const [open, setOpen] = useState(false)
   const links = [
-    { label: 'Fonctionnalités', href: '#features'  },
-    { label: 'Tarification',    href: '#pricing'   },
-    { label: 'MeetMaster',      href: '/meetmaster'},
-    { label: 'FAQ',             href: '#faq'       },
+    { label: 'Fonctionnalités', href: '#fonctionnement' },
+    { label: 'Données',         href: '#donnees' },
+    { label: 'Tarifs',          href: '#tarifs' },
+    { label: 'FAQ',             href: '#faq' },
   ]
   return (
-    <nav className={cn('fixed left-0 right-0 z-50 transition-all duration-300 px-5', hasBar ? 'top-[40px]' : 'top-0')}>
-      <div className="max-w-[1200px] mx-auto pt-3">
-        <div className={cn('flex items-center justify-between px-5 h-14 rounded-pill transition-all duration-300',
-          scrolled ? 'bg-white/95 backdrop-blur-xl shadow-[0_4px_32px_rgba(0,0,0,0.07),0_0_0_1px_rgba(0,0,0,0.05)]' : 'bg-transparent')}>
-          <Link href="/" className="flex items-center gap-2.5 shrink-0 group" aria-label="LeadMaster">
-            <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center shadow-sm group-hover:bg-brand-700 transition-colors">
-              <Target className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="font-bold text-ink-1 text-[15px] tracking-tight">LeadMaster</span>
+    <nav className="lm-nav">
+      <div className="lm-nav-pill">
+        <Link href="/" className="lm-logo" aria-label="LeadMaster">
+          <span className="lm-logo-mark"><Target size={14} /></span>
+          <span>LeadMaster</span>
+        </Link>
+        <div className="lm-nav-links">
+          {links.map(l => <a key={l.href} href={l.href}>{l.label}</a>)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Link href="/login" className="lm-nav-cta-desktop" style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', textDecoration: 'none', padding: '8px 12px' }}>
+            Se connecter
           </Link>
-          <div className="hidden md:flex items-center gap-0.5">
-            {links.map(l => (
-              <a key={l.href} href={l.href} className="text-[13.5px] font-medium text-ink-3 hover:text-ink-1 px-3.5 py-2 rounded-lg hover:bg-surface-2 transition-all duration-150">{l.label}</a>
-            ))}
-          </div>
-          <div className="hidden md:flex items-center gap-2">
-            <Link href="/login" className="text-[13px] font-medium text-ink-3 hover:text-ink-1 px-3.5 py-2 transition-colors">Se connecter</Link>
-            <Link href="/register" className="btn-brand btn-sm group">
-              Commencer gratuitement <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-            </Link>
-          </div>
-          <button className="md:hidden p-2 rounded-lg hover:bg-surface-2 transition-colors" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Menu">
-            {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          <Link href="/register" className="lm-btn lm-btn-primary lm-btn-sm">
+            Commencer <ArrowRight size={14} />
+          </Link>
+          <button
+            className="lm-nav-burger"
+            onClick={() => setOpen(!open)}
+            aria-label="Menu"
+            style={{ background: 'none', border: 0, padding: 8, cursor: 'pointer', color: 'var(--ink)' }}
+          >
+            {open ? <X size={18} /> : <Menu size={18} />}
           </button>
         </div>
-        {mobileOpen && (
-          <div className="md:hidden mt-2 bg-white border border-[rgba(0,0,0,0.07)] rounded-2xl shadow-floating p-3 animate-scale-in">
-            {links.map(l => (
-              <a key={l.href} href={l.href} className="block text-[14px] font-medium text-ink-2 hover:text-ink-1 hover:bg-surface-1 px-4 py-3 rounded-xl transition-colors" onClick={() => setMobileOpen(false)}>{l.label}</a>
-            ))}
-            <div className="border-t border-[rgba(0,0,0,0.06)] mt-2 pt-2 space-y-2">
-              <Link href="/login" className="block text-[14px] text-center font-medium text-ink-3 py-3 hover:bg-surface-1 rounded-xl">Se connecter</Link>
-              <Link href="/register" className="btn-brand w-full justify-center text-sm">Commencer gratuitement</Link>
-            </div>
-          </div>
-        )}
       </div>
+      {open && (
+        <div className="lm-mobile-menu">
+          {links.map(l => <a key={l.href} href={l.href} onClick={() => setOpen(false)}>{l.label}</a>)}
+          <a href="/login" onClick={() => setOpen(false)}>Se connecter</a>
+        </div>
+      )}
     </nav>
   )
 }
 
-// ─── Product Mockup ────────────────────────────────────────
-function ProductMockup() {
-  const rows = [
-    { name: 'BATIPRO MAROC SARL',  sector: 'BTP',       city: 'Casablanca', phone: '0522 45 67 89', dir: null          },
-    { name: 'TECHWAVE MAROC SA',   sector: 'IT',         city: 'Casablanca', phone: null,            dir: 'Y. Tahiri'   },
-    { name: 'ATLAS TRADING SARL',  sector: 'Commerce',   city: 'Rabat',      phone: '0537 22 33 44', dir: null          },
-    { name: 'EXPORTMA SARL',       sector: 'Import/Exp', city: 'Agadir',     phone: null,            dir: 'N. Ait Ahmed'},
-    { name: 'CONSTRUCTA ATLAS SA', sector: 'BTP',        city: 'Tanger',     phone: '0539 12 34 56', dir: null          },
-  ]
+/* ─── The signature: self-unlocking company card ─────────── */
+const CARD_FIELDS = [
+  { key: 'phone',    label: 'Téléphone',  icon: Phone,     blur: '05 •• •• •• ••',      value: '05 22 46 18 30',          cost: 1 },
+  { key: 'email',    label: 'E-mail',     icon: Mail,      blur: '•••••@••••••••.ma',    value: 'contact@atlasplast.ma',   cost: 1 },
+  { key: 'director', label: 'Dirigeant',  icon: User,      blur: 'M. •••••• ••••••',     value: 'M. Benali Karim',         cost: 2 },
+  { key: 'ice',      label: 'ICE',        icon: Building2, blur: '00••••••••••••',       value: '002481937000042',         cost: 2 },
+  { key: 'effectif', label: 'Effectif',   icon: Users2,    blur: 'De •• à •• salariés',  value: 'De 50 à 99 salariés',     cost: 2 },
+  { key: 'capital',  label: 'Capital',    icon: DollarSign,blur: '• ••• ••• MAD',        value: '2 400 000 MAD',           cost: 5 },
+]
+const CARD_TOTAL = CARD_FIELDS.reduce((s, f) => s + f.cost, 0)
+
+function UnlockCard() {
+  const [step, setStep] = useState(0) // 0 = all locked … 6 = all unlocked
+  const [credits, setCredits] = useState(250)
+
+  useEffect(() => {
+    const reduced = typeof window !== 'undefined'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduced) { setStep(CARD_FIELDS.length); setCredits(250 - CARD_TOTAL); return }
+
+    let i = 0
+    let timer: ReturnType<typeof setTimeout>
+    const tick = () => {
+      if (i < CARD_FIELDS.length) {
+        const cost = CARD_FIELDS[i].cost
+        i += 1
+        setStep(i)
+        setCredits(c => c - cost)
+        timer = setTimeout(tick, 1250)
+      } else {
+        // hold complete state, then reset
+        timer = setTimeout(() => {
+          i = 0
+          setStep(0)
+          setCredits(250)
+          timer = setTimeout(tick, 1100)
+        }, 3600)
+      }
+    }
+    timer = setTimeout(tick, 1600)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const done = step >= CARD_FIELDS.length
+
   return (
-    <div className="relative w-full max-w-[580px]">
-      <div className="absolute -inset-8 bg-gradient-to-b from-brand-100/30 via-brand-50/15 to-transparent blur-3xl -z-10 rounded-3xl" />
-      <div className="rounded-[18px] overflow-hidden bg-white shadow-[0_24px_80px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.05)]"
-        style={{ transform: 'perspective(1200px) rotateY(-5deg) rotateX(2deg)' }}>
-        <div className="bg-[#F5F5F3] border-b border-[rgba(0,0,0,0.07)] px-4 py-3 flex items-center gap-3">
-          <div className="flex gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-[#FF5F57]"/><div className="w-3 h-3 rounded-full bg-[#FEBC2E]"/><div className="w-3 h-3 rounded-full bg-[#28C840]"/>
-          </div>
-          <div className="flex-1 mx-2 bg-white border border-[rgba(0,0,0,0.07)] rounded-md px-3 py-1.5 flex items-center gap-2">
-            <span className="text-[11px] text-ink-4 font-mono flex-1">app.leadmaster.ma/results</span>
-            <Shield className="w-3 h-3 text-emerald-500" />
-          </div>
-          <div className="flex items-center gap-1.5 bg-gold-50 border border-gold-100 rounded-pill px-2.5 py-1 shrink-0">
-            <span className="text-[9px] text-gold-500">◆</span>
-            <span className="text-[11px] font-bold font-mono text-gold-700">240</span>
-            <span className="text-[9px] text-gold-500/60">cr</span>
-          </div>
+    <div className="lm-card" aria-hidden="true">
+      <div className="lm-card-head">
+        <div className="lm-card-avatar">AP</div>
+        <div>
+          <h3>Atlas Plast S.a.r.l.</h3>
+          <p><MapPin size={11} /> Casablanca · Industrie &amp; production</p>
         </div>
-        <div className="bg-white px-4 py-2.5 border-b border-[rgba(0,0,0,0.05)] flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 bg-brand-600 rounded-md flex items-center justify-center"><Target className="w-2.5 h-2.5 text-white" /></div>
-            <span className="text-[11px] font-bold text-ink-1">LeadMaster</span>
-          </div>
-          <div className="flex items-center gap-0.5 ml-1">
-            {['Dashboard','Prospecter','CRM'].map((item, i) => (
-              <span key={item} className={cn('text-[10px] font-medium px-2 py-1 rounded-md', i===1?'bg-brand-50 text-brand-700':'text-ink-4')}>{item}</span>
-            ))}
-          </div>
-          <div className="ml-auto flex items-center gap-1 text-[9px] text-ink-4 bg-surface-1 border border-[rgba(0,0,0,0.07)] rounded-md px-2 py-1">
-            <Filter className="w-2.5 h-2.5"/><span>BTP · Casablanca</span>
-          </div>
-          <div className="flex items-center gap-1 bg-brand-600 text-white text-[10px] font-semibold px-2.5 py-1 rounded-md shrink-0">
-            <Sparkles className="w-2.5 h-2.5"/> Lancer
-          </div>
-        </div>
-        <div className="bg-white">
-          <div className="grid grid-cols-[2fr_0.8fr_1fr_1fr] px-4 py-2 border-b border-[rgba(0,0,0,0.05)] bg-surface-1">
-            {['Entreprise','Ville','Téléphone','Dirigeant'].map(h=>(
-              <span key={h} className="text-[9px] font-semibold text-ink-4 uppercase tracking-wide">{h}</span>
-            ))}
-          </div>
-          {rows.map((row,i)=>(
-            <div key={row.name} className={cn('grid grid-cols-[2fr_0.8fr_1fr_1fr] px-4 py-2.5 border-b border-[rgba(0,0,0,0.04)] hover:bg-[rgba(79,70,229,0.025)] transition-colors', i===rows.length-1&&'border-b-0')}>
-              <div className="min-w-0 pr-2"><div className="text-[10px] font-semibold text-ink-1 truncate">{row.name}</div><div className="text-[9px] text-ink-4">{row.sector}</div></div>
-              <div className="text-[10px] text-ink-3 flex items-center gap-1"><MapPin className="w-2.5 h-2.5 text-ink-5 shrink-0"/><span className="truncate">{row.city}</span></div>
-              <div className="flex items-center">
-                {row.phone ? <span className="text-[10px] font-mono text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded truncate">{row.phone}</span>
-                  : <span className="inline-flex items-center gap-1 bg-gold-50 border border-gold-200 text-gold-700 rounded-full px-1.5 py-0.5 text-[9px] font-bold"><Lock className="w-2 h-2"/>1 cr</span>}
-              </div>
-              <div className="flex items-center">
-                {row.dir ? <span className="text-[10px] text-ink-2 truncate">{row.dir}</span>
-                  : <span className="inline-flex items-center gap-1 bg-gold-50 border border-gold-200 text-gold-700 rounded-full px-1.5 py-0.5 text-[9px] font-bold"><Lock className="w-2 h-2"/>2 cr</span>}
-              </div>
+        <span className="lm-chip-verified"><ShieldCheck size={11} /> Vérifiée</span>
+      </div>
+
+      <div className="lm-fields">
+        {CARD_FIELDS.map((f, i) => {
+          const Icon = f.icon
+          return (
+            <div key={f.key} className={`lm-field${i < step ? ' unlocked' : ''}`}>
+              <span className="lm-field-label"><Icon size={10} /> {f.label}</span>
+              <span className="lm-field-locked"><Lock size={11} /> <i>{f.blur}</i></span>
+              <span className="lm-field-value">{f.value}</span>
+              <span className="lm-cost-pop">−{f.cost} cr</span>
             </div>
-          ))}
-        </div>
-        <div className="bg-surface-1 border-t border-[rgba(0,0,0,0.05)] px-4 py-2 flex items-center justify-between">
-          <span className="text-[10px] text-ink-4">5 résultats · 12 crédits utilisés</span>
-          <div className="flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-brand-600 bg-brand-50 px-2 py-1 rounded-pill border border-brand-100 cursor-pointer"><Users2 className="w-2.5 h-2.5"/> Ajouter au CRM</span>
-            <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-ink-3 bg-white px-2 py-1 rounded-pill border border-[rgba(0,0,0,0.08)]"><Download className="w-2.5 h-2.5"/> CSV</span>
-          </div>
-        </div>
+          )
+        })}
+      </div>
+
+      <div className="lm-card-foot">
+        <span className="lm-card-credits">Solde · <b>{credits.toLocaleString('fr-FR')} cr</b></span>
+        <span className={`lm-card-cta${done ? ' show' : ''}`}>
+          <Users2 size={12} /> Injecter → CRM
+        </span>
       </div>
     </div>
   )
 }
 
-// ─── Hero (GSAP entrance only — no ScrollTrigger) ──────────
+/* ─── Hero ───────────────────────────────────────────────── */
 function Hero() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const headRef      = useRef<HTMLHeadingElement>(null)
-  const subRef       = useRef<HTMLParagraphElement>(null)
-  const ctaRef       = useRef<HTMLDivElement>(null)
-  const mockupRef    = useRef<HTMLDivElement>(null)
-  const statsRef     = useRef<HTMLDivElement>(null)
+  const numRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
-    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReduced) return
-    const ctx = gsap.context(() => {
-      gsap.timeline({ defaults: { ease: 'power3.out' } })
-        .from(headRef.current,   { opacity: 0, y: 44, duration: 0.95 }, 0.1)
-        .from(subRef.current,    { opacity: 0, y: 28, duration: 0.85 }, 0.35)
-        .from(ctaRef.current,    { opacity: 0, y: 22, duration: 0.75 }, 0.55)
-        .from(mockupRef.current, { opacity: 0, x: 48, duration: 1.1  }, 0.25)
-      // Counter animations
-      statsRef.current?.querySelectorAll('[data-count]').forEach(el => {
-        const target = parseFloat(el.getAttribute('data-count') || '0')
-        const suffix = el.getAttribute('data-suffix') || ''
-        const obj = { v: 0 }
-        gsap.to(obj, { v: target, duration: 1.8, ease: 'power2.out', delay: 0.8,
-          onUpdate: () => { el.textContent = Math.round(obj.v).toLocaleString('fr-MA') + suffix } })
-      })
-    }, containerRef)
-    return () => ctx.revert()
+    const el = numRef.current
+    if (!el) return
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduced) { el.textContent = (53586).toLocaleString('fr-FR'); return }
+
+    const counter = { v: 0 }
+    const tween = gsap.to(counter, {
+      v: 53586,
+      duration: 2.4,
+      ease: 'power4.out',
+      delay: 0.35,
+      onUpdate: () => { el.textContent = Math.round(counter.v).toLocaleString('fr-FR') },
+    })
+    return () => { tween.kill() }
   }, [])
 
   return (
-    <section ref={containerRef} className="relative min-h-screen flex flex-col pt-24 overflow-hidden bg-[#FAFAF9]">
-      <div className="absolute inset-0 pointer-events-none" aria-hidden="true"><HeroCanvas /></div>
-      <div className="absolute inset-0 bg-gradient-to-b from-[#FAFAF9]/65 via-[#FAFAF9]/25 to-[#FAFAF9]/80 pointer-events-none" aria-hidden="true" />
-      <div className="relative z-10 max-w-[1200px] mx-auto px-5 w-full flex-1 flex flex-col justify-center">
-        <div className="grid lg:grid-cols-2 gap-12 xl:gap-20 items-center py-16">
-          <div className="max-w-[560px]">
-            <div className="inline-flex items-center gap-2 bg-white border border-[rgba(0,0,0,0.07)] rounded-pill px-4 py-2 shadow-xs mb-8">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"/><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"/>
-              </span>
-              <span className="text-[12px] font-semibold text-ink-2">275 000 entreprises marocaines vérifiées</span>
-            </div>
-            <h1 ref={headRef} className="font-extrabold text-ink-1 leading-[1.05] mb-6" style={{ fontSize:'clamp(38px,5.5vw,66px)', letterSpacing:'-2.5px' }}>
-              Prospectez le Maroc.{' '}
-              <span className="relative text-brand-600">
-                Avec précision.
-                <svg className="absolute -bottom-2 left-0 right-0 w-full" height="6" viewBox="0 0 200 6" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M0 4 Q50 0 100 4 Q150 8 200 4" stroke="#C7D2FE" strokeWidth="3" fill="none" strokeLinecap="round"/>
-                </svg>
-              </span>
-            </h1>
-            <p ref={subRef} className="text-[17px] text-ink-3 leading-[1.65] mb-8 max-w-[460px]">
-              Données B2B marocaines vérifiées. Contacts directs des dirigeants. Payez uniquement les champs dont vous avez besoin — 1 crédit par numéro de téléphone.
-            </p>
-            <div ref={ctaRef} className="flex flex-wrap items-center gap-3 mb-10">
-              <Link href="/register" className="btn-brand btn-lg group shadow-[0_8px_24px_rgba(79,70,229,0.28)]">
-                Commencer gratuitement <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform"/>
-              </Link>
-              <a href="#features" className="btn-ghost btn-lg group">
-                <PlayCircle className="w-4 h-4 text-ink-4 group-hover:text-ink-1 transition-colors"/> Voir la démo
-              </a>
-            </div>
-            <div className="flex items-center gap-3 text-[13px] text-ink-4">
-              <div className="flex -space-x-2">
-                {['KB','NA','YE','SA'].map(i=>(
-                  <div key={i} className="w-7 h-7 rounded-full bg-brand-100 border-2 border-white flex items-center justify-center">
-                    <span className="text-[9px] font-bold text-brand-700">{i}</span>
-                  </div>
-                ))}
-              </div>
-              <span>Rejoint par <strong className="text-ink-2">+200 commerciaux</strong> marocains</span>
-            </div>
+    <header className="lm-hero">
+      <div className="lm-hero-inner">
+        <div>
+          <span className="lm-eyebrow lm-reveal on">
+            <Star8 size={11} color="var(--maj-hot)" /> Données B2B · Maroc
+          </span>
+          <h1>
+            <span className="lm-odometer" ref={numRef}>0</span> entreprises marocaines.<br />
+            Débloquées.
+          </h1>
+          <p className="lm-hero-sub">
+            Ciblez par secteur, ville, effectif et capital. Débloquez uniquement
+            les données dont vous avez besoin — téléphone, e-mail, dirigeant, ICE —
+            et payez au champ près.
+          </p>
+          <div className="lm-hero-ctas">
+            <Link href="/register" className="lm-btn lm-btn-primary">
+              Commencer — 100 entreprises offertes <ArrowRight size={15} />
+            </Link>
+            <a href="#tarifs" className="lm-btn lm-btn-ghost-dark">Voir les tarifs</a>
           </div>
-          <div ref={mockupRef} className="hidden lg:flex items-center justify-end" aria-hidden="true">
-            <div className="animate-float"><ProductMockup /></div>
+          <div className="lm-hero-meta">
+            <div><b>1 100+</b><span>secteurs d’activité</span></div>
+            <div><b>250+</b><span>villes couvertes</span></div>
+            <div><b>0 cr</b><span>si la donnée n’existe pas</span></div>
           </div>
         </div>
-        <div ref={statsRef} className="grid grid-cols-2 sm:grid-cols-4 gap-6 py-8 border-t border-[rgba(0,0,0,0.06)]">
-          {[
-            { count:275000, suffix:'',  label:'Entreprises vérifiées'      },
-            { count:94,  suffix:'%', label:'Avec email professionnel'   },
-            { count:95,  suffix:'%', label:'Avec numéro direct'         },
-            { count:82,  suffix:'',  label:'Contacts direction DAF/DRH' },
-          ].map(({count,suffix,label})=>(
-            <div key={label} className="text-center sm:text-left">
-              <span className="block text-[30px] sm:text-[34px] font-extrabold text-ink-1 tabular-nums" style={{letterSpacing:'-1.5px',lineHeight:1}} data-count={count} data-suffix={suffix}>
-                {count}{suffix}
-              </span>
-              <p className="text-[12px] text-ink-4 mt-1 leading-snug">{label}</p>
-            </div>
-          ))}
-        </div>
+        <UnlockCard />
       </div>
-    </section>
+    </header>
   )
 }
 
-// ─── Data Strip ────────────────────────────────────────────
-function DataStrip() {
-  const items = ['275 000 entreprises marocaines','94% avec e-mail professionnel','95% avec téléphone direct','82 contacts direction DAF · DRH','Sources officielles vérifiées','Zéro double facturation','Export CSV compatible Excel & HubSpot']
+/* ─── Live data ticker ───────────────────────────────────── */
+const TICKS = [
+  ['Commerce & distribution', '10 054'],
+  ['Industrie & production',  '5 445'],
+  ['BTP & Matériaux',         '5 212'],
+  ['Automobile & transports', '4 574'],
+  ['Hôtellerie & Loisirs',    '2 942'],
+  ['Artisanat & Production',  '2 731'],
+  ['Santé & bien-être',       '2 624'],
+  ['Marketing & Médias',      '2 437'],
+  ['Immobilier & Habitat',    '1 851'],
+  ['Agriculture & Agro',      '1 690'],
+  ['Juridique & Conseil',     '1 400'],
+  ['Culture & divertissement','1 021'],
+]
+
+function Ticker() {
+  const row = (k: string) => (
+    <div style={{ display: 'flex', gap: 10 }} key={k}>
+      {TICKS.map(([label, n]) => (
+        <span className="lm-tick" key={`${k}-${label}`}>
+          <Star8 size={8} color="var(--maj-hot)" /> {label} — <b>{n}</b>
+        </span>
+      ))}
+    </div>
+  )
   return (
-    <div className="bg-brand-600 py-3 overflow-hidden select-none" aria-hidden="true">
-      <div className="ticker-track">
-        {[...items,...items].map((item,i)=>(
-          <span key={i} className="inline-flex items-center gap-3 px-6 text-[12px] font-semibold text-brand-100 whitespace-nowrap">
-            <span className="w-1 h-1 rounded-full bg-brand-300/60 inline-block"/>{item}
-          </span>
-        ))}
-      </div>
+    <div className="lm-ticker" aria-hidden="true">
+      <div className="lm-ticker-track">{row('a')}{row('b')}</div>
     </div>
   )
 }
 
-// ─── How It Works ──────────────────────────────────────────
-function HowItWorks() {
-  const sRef = useRef<HTMLElement>(null)
-  useReveal(sRef, '.reveal-item')
-
-  const steps = [
-    { num:'01', icon:Filter,    color:'bg-brand-50 text-brand-600',    border:'border-brand-100',   title:'Filtrez par secteur, ville, effectif',    body:'Choisissez vos critères parmi 12 secteurs et 16 villes marocaines. Voyez le coût total avant de valider.' },
-    { num:'02', icon:BarChart2, color:'bg-violet-50 text-violet-600',  border:'border-violet-100',  title:'Estimez le coût avant de dépenser',        body:'Notre calculateur affiche combien d\'entreprises correspondent et combien ça coûte — avant de débiter un seul crédit.' },
-    { num:'03', icon:Unlock,    color:'bg-emerald-50 text-emerald-600',border:'border-emerald-100', title:'Payez uniquement ce que vous utilisez',     body:'Téléphone = 1 cr. Email dirigeant = 5 cr. Un champ déjà débloqué n\'est jamais refacturé. Exportez en CSV ou ajoutez au CRM.' },
-  ]
-
+/* ─── Comment ça marche (real sequence → numbers justified) ─ */
+function Steps() {
   return (
-    <section ref={sRef} className="py-24 px-5 bg-white" id="features">
-      <div className="max-w-[1200px] mx-auto">
-        <div className="max-w-[520px] mb-16">
-          <p className="text-[12px] font-bold uppercase tracking-[1.5px] text-brand-600 mb-3">Comment ça marche</p>
-          <h2 className="font-extrabold text-ink-1 mb-4" style={{fontSize:'clamp(28px,3.5vw,42px)',letterSpacing:'-1.5px',lineHeight:1.15}}>
-            De la recherche au premier appel en moins de 5 minutes.
-          </h2>
-          <p className="text-[16px] text-ink-3 leading-relaxed">Pas d&apos;abonnement. Pas de surprise. Achetez uniquement les données qui vous intéressent.</p>
-        </div>
-        <div className="grid md:grid-cols-3 gap-6">
-          {steps.map(({num,icon:Icon,color,border,title,body})=>(
-            <div key={num} className={cn('reveal-item relative bg-white rounded-2xl border p-8 hover:shadow-card-md hover:-translate-y-1 transition-all duration-300', border)}>
-              <div className="flex items-start justify-between mb-6">
-                <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center',color)}><Icon className="w-5 h-5"/></div>
-                <span className="font-black text-[52px] leading-none" style={{color:'rgba(0,0,0,0.05)',letterSpacing:'-2px'}}>{num}</span>
-              </div>
-              <h3 className="font-bold text-ink-1 text-[17px] mb-3 leading-snug" style={{letterSpacing:'-0.3px'}}>{title}</h3>
-              <p className="text-[14px] text-ink-3 leading-relaxed">{body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
+    <section className="lm-section" id="fonctionnement" style={{ background: 'var(--paper)' }}>
+      <div className="lm-wrap">
+        <span className="lm-kicker lm-reveal"><Star8 size={10} /> Comment ça marche</span>
+        <h2 className="lm-h2 lm-reveal" data-d="1">Du ciblage au client,<br />en trois gestes.</h2>
 
-// ─── Features ──────────────────────────────────────────────
-function Features() {
-  const sRef = useRef<HTMLElement>(null)
-  useReveal(sRef, '.reveal-item')
-
-  const feats = [
-    {icon:Search,        badge:'Ciblage',     bc:'bg-brand-50 text-brand-700',    title:'Recherche multi-critères',    body:'Secteur, ville, région, effectif, raison sociale. Combinez vos filtres et prévisualisez le nombre de résultats en temps réel.'},
-    {icon:Lock,          badge:'Économique',  bc:'bg-violet-50 text-violet-700',  title:'Paiement au champ débloqué',  body:'Téléphone à 1 cr, email dirigeant à 5 cr. Vous contrôlez exactement ce que vous payez à chaque requête.'},
-    {icon:Users2,        badge:'CRM',         bc:'bg-emerald-50 text-emerald-700',title:'Pipeline CRM intégré',        body:'Statuts d\'appel, historique, notes personnelles, rappels avec alertes. Votre pipeline complet sans quitter LeadMaster.'},
-    {icon:CalendarClock, badge:'Rappels',     bc:'bg-amber-50 text-amber-700',    title:'Callbacks et relances',       body:'Programmez vos relances. Alertes rouge/orange/vert selon l\'urgence. Journaux d\'appel complets par prospect.'},
-    {icon:Download,      badge:'Export',      bc:'bg-sky-50 text-sky-700',        title:'Export CSV compatible',       body:'Exportez en un clic vers Excel, HubSpot, Salesforce. Format propre et structuré, prêt à l\'emploi immédiatement.'},
-    {icon:Shield,        badge:'Anti-doublon',bc:'bg-rose-50 text-rose-700',      title:'Zéro double facturation',     body:'Un champ déjà débloqué s\'affiche automatiquement sans crédits. Système de mémoire intelligent par entreprise.'},
-  ]
-
-  return (
-    <section ref={sRef} className="py-24 px-5 bg-[#F7F7F5]">
-      <div className="max-w-[1200px] mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="font-extrabold text-ink-1 mb-4" style={{fontSize:'clamp(28px,3.5vw,42px)',letterSpacing:'-1.5px',lineHeight:1.15}}>
-            Tout ce qu&apos;il faut pour prospecter au Maroc.
-          </h2>
-          <p className="text-[16px] text-ink-3 max-w-[440px] mx-auto">Plus qu&apos;une base de données — un système de prospection B2B complet.</p>
-        </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {feats.map(({icon:Icon,badge,bc,title,body})=>(
-            <div key={title} className="reveal-item bg-white rounded-2xl border border-[rgba(0,0,0,0.06)] p-7 hover:border-brand-100 hover:shadow-[0_4px_24px_rgba(79,70,229,0.07)] hover:-translate-y-0.5 transition-all duration-200 group">
-              <div className="flex items-start justify-between mb-5">
-                <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center group-hover:bg-brand-100 transition-colors"><Icon className="w-5 h-5 text-brand-600"/></div>
-                <span className={cn('text-[11px] font-bold px-2.5 py-1 rounded-pill',bc)}>{badge}</span>
-              </div>
-              <h3 className="font-bold text-ink-1 text-[16px] mb-2.5 leading-snug" style={{letterSpacing:'-0.3px'}}>{title}</h3>
-              <p className="text-[13.5px] text-ink-3 leading-relaxed">{body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ─── Field Pricing ─────────────────────────────────────────
-function FieldPricing() {
-  const sRef = useRef<HTMLElement>(null)
-  useReveal(sRef, '.reveal-item')
-
-  const tiers = [
-    {label:'Gratuit',           dot:'bg-emerald-500',badge:'bg-emerald-50 text-emerald-700 border-emerald-100',fields:['Raison sociale','Secteur','Ville & Région','Forme juridique']},
-    {label:'1 cr / entreprise', dot:'bg-brand-500',  badge:'bg-brand-50 text-brand-700 border-brand-100',      fields:['Téléphone','E-mail professionnel','Site web','Adresse']},
-    {label:'2 cr / entreprise', dot:'bg-violet-500', badge:'bg-violet-50 text-violet-700 border-violet-100',   fields:['Effectif','Nom du dirigeant','Année de création']},
-    {label:'5 cr / entreprise', dot:'bg-amber-500',  badge:'bg-amber-50 text-amber-700 border-amber-100',      fields:['Tél. dirigeant','E-mail dirigeant','CA','Capital social','Contacts DAF · DRH']},
-  ]
-
-  return (
-    <section ref={sRef} className="py-24 px-5 bg-white">
-      <div className="max-w-[960px] mx-auto">
-        <div className="grid lg:grid-cols-[1fr_1.1fr] gap-16 items-center">
-          <div className="reveal-item">
-            <p className="text-[12px] font-bold uppercase tracking-[1.5px] text-brand-600 mb-4">Tarification transparente</p>
-            <h2 className="font-extrabold text-ink-1 mb-5" style={{fontSize:'clamp(26px,3.5vw,40px)',letterSpacing:'-1.5px',lineHeight:1.15}}>
-              1 crédit = 1 champ, <span className="text-brand-600">pour 1 entreprise.</span>
-            </h2>
-            <p className="text-[16px] text-ink-3 leading-relaxed mb-8">
-              Vous ne payez que pour les données que vous déverrouillez. Jamais pour une base entière. Jamais deux fois pour le même champ.
+        <div className="lm-steps">
+          {/* 01 — Ciblez */}
+          <article className="lm-step lm-reveal" data-d="1">
+            <span className="lm-step-num">01</span>
+            <h3>Ciblez</h3>
+            <p>
+              Parcourez l’arborescence complète des secteurs marocains.
+              Filtrez par ville, effectif, capital — le compteur se met à jour en direct.
             </p>
-            <div className="bg-brand-50 border border-brand-100 rounded-xl p-5">
-              <p className="text-[14px] font-semibold text-brand-800 mb-2">Exemple concret</p>
-              <p className="text-[13px] text-brand-700 leading-relaxed">10 entreprises · Téléphone + Email + Dirigeant :<br/><strong className="text-brand-900">(1 + 1 + 2) × 10 = 40 crédits</strong></p>
+            <div className="lm-step-visual">
+              <div className="lm-mini-row">
+                <span><Search size={12} /> Hôtellerie &amp; Loisirs</span>
+                <b className="lm-mini-count">2 942</b>
+              </div>
+              <div className="lm-mini-row">
+                <span><Filter size={12} /> Ville · Marrakech</span>
+                <b className="lm-mini-count">418</b>
+              </div>
+              <div className="lm-mini-row">
+                <span><Users2 size={12} /> De 20 à 49 salariés</span>
+                <b className="lm-mini-count">96</b>
+              </div>
+            </div>
+          </article>
+
+          {/* 02 — Débloquez */}
+          <article className="lm-step lm-reveal" data-d="2">
+            <span className="lm-step-num">02</span>
+            <h3>Débloquez</h3>
+            <p>
+              Choisissez vos champs — téléphone, e-mail, dirigeant, ICE, capital.
+              Le coût est intelligent : une donnée absente ne coûte rien.
+            </p>
+            <div className="lm-step-visual">
+              <div className="lm-mini-row">
+                <span><Phone size={12} /> Téléphone · 96/96</span>
+                <b>96 cr</b>
+              </div>
+              <div className="lm-mini-row">
+                <span><Mail size={12} /> E-mail · 71/96</span>
+                <b>71 cr</b>
+              </div>
+              <div className="lm-mini-row">
+                <span><User size={12} /> Dirigeant · 88/96</span>
+                <b>176 cr</b>
+              </div>
+            </div>
+          </article>
+
+          {/* 03 — Convertissez */}
+          <article className="lm-step lm-reveal" data-d="3">
+            <span className="lm-step-num">03</span>
+            <h3>Convertissez</h3>
+            <p>
+              Injectez vos entreprises dans le CRM intégré : statuts, notes,
+              rappels, appel en un clic. Exportez en CSV quand vous voulez.
+            </p>
+            <div className="lm-step-visual">
+              <div className="lm-mini-row">
+                <span>Riad Zaytoun</span>
+                <b className="lm-mini-status" style={{ color: '#1d4ed8', background: '#dbeafe' }}>À appeler</b>
+              </div>
+              <div className="lm-mini-row">
+                <span>Palmeraie Events</span>
+                <b className="lm-mini-status" style={{ color: '#b45309', background: '#fef3c7' }}>À rappeler</b>
+              </div>
+              <div className="lm-mini-row">
+                <span>Dar Kasbah Hotels</span>
+                <b className="lm-mini-status" style={{ color: '#047857', background: '#d1fae5' }}>Converti ✓</b>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Le menu des données (tarif au champ) ───────────────── */
+const MENU = [
+  ['Profil de base', '1 cr'],
+  ['Téléphone',      '+1 cr'],
+  ['E-mail',         '+1 cr'],
+  ['Adresse + GPS',  '+1 cr'],
+  ['Site web',       '+1 cr'],
+  ['ICE + RC',       '+2 cr'],
+  ['Année de création', '+2 cr'],
+  ['Nom du dirigeant',  '+2 cr'],
+  ['Effectif',          '+2 cr'],
+  ['Capital social',    '+5 cr'],
+]
+
+function DataMenu() {
+  return (
+    <section className="lm-section" id="donnees" style={{ background: 'var(--sable)' }}>
+      <div className="lm-wrap">
+        <div className="lm-menu-grid">
+          <div>
+            <span className="lm-kicker lm-reveal"><Star8 size={10} /> Tarification au champ</span>
+            <h2 className="lm-h2 lm-reveal" data-d="1">Payez la donnée.<br />Pas la promesse.</h2>
+            <p className="lm-lead lm-reveal" data-d="2">
+              Chaque champ a un prix, affiché avant de débloquer. Le coût réel est
+              calculé entreprise par entreprise : si le téléphone n’existe pas
+              dans notre base, il ne vous est jamais facturé. Et si une donnée
+              s’avère fausse, vous la signalez depuis le CRM — elle est remboursée.
+            </p>
+            <div className="lm-hero-ctas lm-reveal" data-d="3" style={{ marginTop: 30 }}>
+              <Link href="/register" className="lm-btn lm-btn-primary">
+                Essayer sur 100 entreprises <ArrowRight size={15} />
+              </Link>
             </div>
           </div>
-          <div className="space-y-3">
-            {tiers.map(({label,dot,badge,fields},idx)=>(
-              <div key={label} className="reveal-item bg-[#FAFAF9] border border-[rgba(0,0,0,0.06)] rounded-xl p-4 hover:border-[rgba(0,0,0,0.1)] hover:shadow-xs transition-all">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2"><div className={cn('w-2.5 h-2.5 rounded-full',dot)}/><span className="text-[13px] font-semibold text-ink-2">Tier {idx+1}</span></div>
-                  <span className={cn('text-[11px] font-bold px-2.5 py-1 rounded-pill border',badge)}>{label}</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {fields.map(f=><span key={f} className="text-[11px] text-ink-3 bg-white border border-[rgba(0,0,0,0.07)] px-2.5 py-1 rounded-pill">{f}</span>)}
-                </div>
+
+          <div className="lm-menu lm-reveal" data-d="2">
+            <h3>— Menu des données —</h3>
+            {MENU.map(([label, price]) => (
+              <div className="lm-menu-row" key={label}>
+                <span>{label}</span>
+                <span className="dots" />
+                <b>{price}</b>
               </div>
             ))}
+            <p className="lm-menu-note">
+              Donnée absente = <b>0 crédit</b>. Donnée fausse = <b>remboursée</b>.
+            </p>
           </div>
         </div>
       </div>
@@ -430,167 +789,136 @@ function FieldPricing() {
   )
 }
 
-// ─── Pricing ───────────────────────────────────────────────
-function Pricing() {
-  const [annual, setAnnual] = useState(false)
-  const sRef = useRef<HTMLElement>(null)
-  useReveal(sRef, '.reveal-item')
-
-  const plans = [
-    {id:'decouverte',name:'Découverte',emoji:'🌱',pm:0,   pa:0,   cr:100,  period:'one-time',hot:false,badge:null,          color:'border-[rgba(0,0,0,0.08)]',feats:['100 crédits offerts','1 utilisateur','Export CSV (5 lignes)','CRM lecture seule','Support FAQ']},
-    {id:'solo',      name:'Solo',      emoji:'⚡',pm:149, pa:119, cr:400,  period:'/mois',   hot:false,badge:null,          color:'border-brand-200',          feats:['400 crédits/mois','1 utilisateur','Rollover 1 mois','Export CSV 100 lignes','CRM complet','Support email 48h']},
-    {id:'equipe',    name:'Équipe',    emoji:'👥',pm:390, pa:299, cr:1500, period:'/mois',   hot:true, badge:'Populaire',   color:'border-brand-400',          feats:['1 500 crédits/mois','3 utilisateurs','Rollover 2 mois','Export CSV illimité','CRM pipeline','Support prioritaire 24h']},
-    {id:'business',  name:'Business',  emoji:'🚀',pm:990, pa:790, cr:5000, period:'/mois',   hot:false,badge:'Meilleur ROI',color:'border-gold-200',           feats:['5 000 crédits/mois','10 utilisateurs','Rollover 3 mois','API & Webhooks','Analytics équipe','1 meeting MeetMaster/mois']},
-    {id:'entreprise',name:'Entreprise',emoji:'🏢',pm:null,pa:null,cr:null, period:'',        hot:false,badge:null,          color:'border-emerald-200',        feats:['Crédits illimités','Utilisateurs illimités','SLA 99.5% garanti','API volume élevé','Onboarding personnalisé','Manager dédié']},
-  ]
-
+/* ─── Garantie ───────────────────────────────────────────── */
+function Guarantee() {
   return (
-    <section ref={sRef} id="pricing" className="py-24 px-5 bg-[#F7F7F5]">
-      <div className="max-w-[1200px] mx-auto">
-        <div className="text-center mb-12">
-          <h2 className="font-extrabold text-ink-1 mb-4" style={{fontSize:'clamp(28px,3.5vw,42px)',letterSpacing:'-1.5px',lineHeight:1.15}}>Commencez gratuitement. Évoluez à votre rythme.</h2>
-          <p className="text-[16px] text-ink-3 mb-8">Paiement par virement bancaire. TVA 20% incluse. Activation sous 24h.</p>
-          <div className="inline-flex items-center gap-0.5 bg-white border border-[rgba(0,0,0,0.08)] rounded-pill p-1.5 shadow-xs">
-            {[false,true].map(isAnnual=>(
-              <button key={String(isAnnual)} onClick={()=>setAnnual(isAnnual)}
-                className={cn('flex items-center gap-2 text-[13px] font-semibold px-5 py-2 rounded-pill transition-all', annual===isAnnual?'bg-ink-1 text-white shadow-xs':'text-ink-3 hover:text-ink-1')}>
-                {isAnnual?(<>Annuel <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-pill">-20%</span></>):'Mensuel'}
-              </button>
-            ))}
+    <section className="lm-section" style={{ paddingTop: 90, paddingBottom: 90 }}>
+      <div className="lm-wrap">
+        <div className="lm-band lm-reveal">
+          <div>
+            <h2>Donnée fausse ?<br />Remboursée.</h2>
+            <p>
+              Numéro qui ne répond plus, entreprise fermée, dirigeant parti —
+              signalez-le en un clic depuis votre CRM. Nous vérifions,
+              nous remboursons vos crédits, et la base devient plus propre
+              pour tout le monde.
+            </p>
           </div>
+          <Link href="/register" className="lm-btn">
+            Prospecter sans risque <ArrowRight size={15} />
+          </Link>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-start">
-          {plans.map(plan=>(
-            <div key={plan.id} className={cn('reveal-item flex flex-col rounded-2xl border p-6 transition-all duration-300',
-              plan.hot?'bg-brand-600 border-brand-500 shadow-[0_8px_40px_rgba(79,70,229,0.25)] lg:scale-[1.04] lg:-translate-y-1':'bg-white hover:shadow-card-md hover:-translate-y-0.5',plan.color)}>
-              {plan.badge&&<div className={cn('text-[10px] font-bold uppercase tracking-widest mb-3',plan.hot?'text-brand-200':plan.id==='business'?'text-gold-600':'text-brand-600')}>{plan.id==='business'?'✦':'⭐'} {plan.badge}</div>}
-              <div className="flex items-center gap-2 mb-3"><span className="text-[18px]">{plan.emoji}</span><span className={cn('text-[13px] font-bold uppercase tracking-wide',plan.hot?'text-brand-200':'text-ink-3')}>{plan.name}</span></div>
-              <div className="mb-4">
-                {plan.pm===null?<p className={cn('text-[26px] font-extrabold leading-none',plan.hot?'text-white':'text-ink-1')} style={{letterSpacing:'-1px'}}>Sur devis</p>
-                :plan.pm===0?<p className={cn('text-[26px] font-extrabold leading-none',plan.hot?'text-white':'text-ink-1')} style={{letterSpacing:'-1px'}}>Gratuit</p>
-                :<div className="flex items-baseline gap-1"><span className={cn('text-[26px] font-extrabold tabular-nums leading-none',plan.hot?'text-white':'text-ink-1')} style={{letterSpacing:'-1px'}}>{annual?plan.pa:plan.pm}</span><span className={cn('text-[12px] font-medium',plan.hot?'text-brand-200':'text-ink-4')}>MAD{plan.period}</span></div>}
-                {plan.cr&&<p className={cn('text-[12px] mt-1',plan.hot?'text-brand-200':'text-ink-4')}>{plan.cr.toLocaleString('fr-MA')} crédits{plan.period==='/mois'?'/mois':' offerts'}</p>}
+      </div>
+    </section>
+  )
+}
+
+/* ─── Tarifs ─────────────────────────────────────────────── */
+const PLANS = [
+  {
+    name: 'Découverte', price: '0', credits: '100 crédits offerts', hot: false,
+    features: ['100 premières entreprises gratuites', 'Recherche multicritères complète', 'Export CSV', 'CRM intégré'],
+    cta: 'Commencer gratuitement',
+  },
+  {
+    name: 'Solo', price: '149', credits: '400 crédits / mois', hot: false,
+    features: ['Tout Découverte', 'Déblocage champ par champ', 'Filtres effectif & capital', 'Signalement + remboursement'],
+    cta: 'Choisir Solo',
+  },
+  {
+    name: 'Équipe', price: '390', credits: '1 500 crédits / mois', hot: true,
+    features: ['Tout Solo', 'Jusqu’à 3 utilisateurs', 'Recherches sauvegardées illimitées', 'Support prioritaire'],
+    cta: 'Choisir Équipe',
+  },
+  {
+    name: 'Business', price: '990', credits: '5 000 crédits / mois', hot: false,
+    features: ['Tout Équipe', 'Jusqu’à 10 utilisateurs', 'Volumes de déblocage majorés', 'Accompagnement dédié'],
+    cta: 'Choisir Business',
+  },
+]
+
+function Pricing() {
+  return (
+    <section className="lm-section" id="tarifs" style={{ background: 'var(--paper)', paddingTop: 40 }}>
+      <div className="lm-wrap">
+        <div style={{ textAlign: 'center' }}>
+          <span className="lm-kicker lm-reveal" style={{ justifyContent: 'center' }}>
+            <Star8 size={10} /> Tarifs
+          </span>
+          <h2 className="lm-h2 lm-reveal" data-d="1">Des crédits, pas d’engagement.</h2>
+          <p className="lm-lead lm-reveal" data-d="2" style={{ margin: '18px auto 0' }}>
+            Commencez gratuitement sur 100 entreprises. Passez à un plan
+            quand votre prospection décolle.
+          </p>
+        </div>
+
+        <div className="lm-plans">
+          {PLANS.map((p, i) => (
+            <div className={`lm-plan lm-reveal${p.hot ? ' hot' : ''}`} data-d={String(i % 4)} key={p.name}>
+              {p.hot && <span className="lm-plan-badge">Populaire</span>}
+              <h3>{p.name}</h3>
+              <div className="lm-plan-price">
+                <b>{p.price}</b><span>MAD / mois</span>
               </div>
-              <ul className="space-y-2 flex-1 mb-5">
-                {plan.feats.map(f=>(
-                  <li key={f} className="flex items-start gap-2">
-                    <Check className={cn('w-3.5 h-3.5 mt-0.5 shrink-0',plan.hot?'text-brand-200':'text-emerald-500')} strokeWidth={2.5}/>
-                    <span className={cn('text-[12px] leading-snug',plan.hot?'text-brand-100':'text-ink-3')}>{f}</span>
-                  </li>
+              <span className="lm-plan-credits">{p.credits}</span>
+              <ul>
+                {p.features.map(f => (
+                  <li key={f}><Check size={13} /> {f}</li>
                 ))}
               </ul>
-              <Link href={plan.id==='entreprise'?'mailto:contact@leadmaster.ma':'/register'}
-                className={cn('block text-center text-[13px] font-semibold py-2.5 rounded-pill transition-all',
-                  plan.hot?'bg-white text-brand-700 hover:bg-brand-50 shadow-sm':plan.id==='decouverte'?'bg-ink-1 text-white hover:bg-ink-2':'bg-[#F0F0ED] text-ink-2 hover:bg-[#E8E8E4] border border-[rgba(0,0,0,0.08)]')}>
-                {plan.id==='decouverte'?'Créer un compte':plan.id==='entreprise'?'Nous contacter':`Choisir ${plan.name}`}
+              <Link href="/register" className={`lm-btn ${p.hot ? 'lm-btn-primary' : 'lm-btn-ghost'}`} style={{ justifyContent: 'center' }}>
+                {p.cta}
               </Link>
             </div>
           ))}
         </div>
-        <p className="text-center text-[12px] text-ink-4 mt-6">Activation manuelle sous 24h · TVA 20% incluse · Paiement par virement bancaire ou chèque</p>
       </div>
     </section>
   )
 }
 
-// ─── MeetMaster ────────────────────────────────────────────
-function MeetMasterSection() {
-  return (
-    <section className="py-24 px-5 relative overflow-hidden" style={{background:'linear-gradient(135deg,#fffbeb 0%,#fff7ed 60%,#fef9ee 100%)'}}>
-      <div className="absolute right-0 top-0 w-[500px] h-[500px] rounded-full opacity-15 -translate-y-1/2 translate-x-1/4 pointer-events-none" style={{background:'radial-gradient(circle,#F59E0B 0%,transparent 70%)'}} aria-hidden="true"/>
-      <div className="max-w-[1000px] mx-auto relative">
-        <div className="grid lg:grid-cols-[1fr_auto] gap-12 items-center">
-          <div>
-            <div className="inline-flex items-center gap-2 bg-gold-100 border border-gold-200 rounded-pill px-4 py-2 mb-7">
-              <Crown className="w-3.5 h-3.5 text-gold-600"/>
-              <span className="text-[11px] font-bold uppercase tracking-widest text-gold-700">MeetMaster by LeadMaster</span>
-            </div>
-            <h2 className="font-extrabold text-ink-1 mb-5" style={{fontSize:'clamp(26px,3.5vw,44px)',letterSpacing:'-1.5px',lineHeight:1.1}}>
-              Rencontrez les décideurs <span className="text-gold-600">qui signent.</span>
-            </h2>
-            <p className="text-[16px] text-ink-3 leading-relaxed mb-8 max-w-[460px]">
-              30 minutes avec un DRH, DAF ou Directeur des Achats qualifié. Insights exclusifs, réseau direct, benchmark de marché. 1 000 MAD le meeting.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link href="/meetmaster" className="btn-gold btn-lg group">Explorer les Masters <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform"/></Link>
-              <Link href="/meetmaster/apply" className="btn-ghost btn-lg">Devenir Master — 500 MAD/meeting</Link>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 gap-3 min-w-[220px]">
-            {[
-              {icon:Search,        title:'Choisissez',body:'Filtrez par rôle, secteur, ville'},
-              {icon:CalendarClock, title:'Réservez',  body:'3 créneaux · Réponse sous 24h' },
-              {icon:Sparkles,      title:'Rencontrez',body:'30 min de valeur pure en visio' },
-            ].map(({icon:Icon,title,body})=>(
-              <div key={title} className="flex items-center gap-4 bg-white rounded-xl border border-gold-100 p-4 shadow-xs hover:shadow-sm transition-shadow">
-                <div className="w-9 h-9 rounded-lg bg-gold-50 flex items-center justify-center shrink-0"><Icon className="w-4 h-4 text-gold-600"/></div>
-                <div><p className="font-bold text-ink-1 text-[13px]">{title}</p><p className="text-[12px] text-ink-4">{body}</p></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
+/* ─── FAQ ────────────────────────────────────────────────── */
+const FAQS = [
+  {
+    q: 'D’où viennent les données ?',
+    a: 'Notre base regroupe 53 586 entreprises marocaines actives, structurées par secteur, domaine et activité, avec plus de 25 champs par fiche : coordonnées, dirigeant, ICE, forme juridique, effectif, capital social et plus.',
+  },
+  {
+    q: 'Comment fonctionne le coût « intelligent » ?',
+    a: 'Avant chaque recherche, nous affichons le taux de couverture réel de chaque champ. Vous n’êtes facturé que pour les données qui existent : si l’e-mail d’une entreprise est absent de la base, il ne vous coûte rien.',
+  },
+  {
+    q: 'Que se passe-t-il si une donnée est fausse ?',
+    a: 'Vous la signalez en un clic depuis votre CRM (entreprise fermée, numéro incorrect, dirigeant parti…). Après vérification, l’intégralité des crédits dépensés sur cette entreprise vous est remboursée.',
+  },
+  {
+    q: 'Les 100 entreprises offertes, c’est vraiment gratuit ?',
+    a: 'Oui. À l’inscription, vos 100 premières entreprises en profil de base sont offertes, sans carte bancaire. C’est la meilleure façon de juger la qualité de la donnée avant d’investir.',
+  },
+  {
+    q: 'Puis-je exporter mes données ?',
+    a: 'Chaque recherche est exportable en CSV avec tous les champs débloqués. Vous pouvez aussi injecter les entreprises directement dans le CRM intégré pour piloter votre prospection.',
+  },
+]
 
-// ─── Testimonials ──────────────────────────────────────────
-function Testimonials() {
-  const sRef = useRef<HTMLElement>(null)
-  useReveal(sRef, '.reveal-item')
-
-  const reviews = [
-    {quote:'Avant LeadMaster, je passais des journées à chercher des contacts. Maintenant j\'ai une liste qualifiée avec numéros directs en 10 minutes.',             name:'Karim B.', role:'Directeur Commercial · IT, Casablanca', initials:'KB'},
-    {quote:'Le système de crédits est brillant — je ne paie que les coordonnées des prospects qui m\'intéressent. Zéro gaspillage. Différent de tous les autres outils.',name:'Nadia A.', role:'Fondatrice · Agence Growth, Rabat',      initials:'NA'},
-    {quote:'Les contacts DAF et DRH sont introuvables ailleurs. J\'ai accédé directement à la direction de 8 entreprises cibles en une seule session.',                 name:'Youssef E.',role:'Business Developer · Fintech, Casablanca', initials:'YE'},
-  ]
-
-  return (
-    <section ref={sRef} className="py-24 px-5 bg-white">
-      <div className="max-w-[1200px] mx-auto">
-        <div className="text-center mb-14">
-          <h2 className="font-extrabold text-ink-1" style={{fontSize:'clamp(26px,3.5vw,40px)',letterSpacing:'-1px',lineHeight:1.2}}>Ils ont trouvé leurs prochains clients.</h2>
-        </div>
-        <div className="grid md:grid-cols-3 gap-5">
-          {reviews.map(({quote,name,role,initials})=>(
-            <div key={name} className="reveal-item bg-[#FAFAF9] rounded-2xl border border-[rgba(0,0,0,0.06)] p-7 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-200">
-              <div className="flex gap-0.5 mb-5">{[1,2,3,4,5].map(s=><Star key={s} className="w-4 h-4 fill-gold-400 text-gold-400"/>)}</div>
-              <p className="text-[14px] text-ink-2 leading-relaxed mb-6 italic">&ldquo;{quote}&rdquo;</p>
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center shrink-0"><span className="text-[11px] font-bold text-brand-700">{initials}</span></div>
-                <div><p className="font-bold text-ink-1 text-[13px]">{name}</p><p className="text-[11px] text-ink-4 mt-0.5">{role}</p></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ─── FAQ ───────────────────────────────────────────────────
 function FAQ() {
-  const [open, setOpen] = useState<number|null>(null)
-  const faqs = [
-    {q:"Qu'est-ce qu'un crédit LeadMaster ?",            a:"Un crédit vous permet de débloquer un champ de données pour une entreprise. Voir le numéro de téléphone = 1 crédit, l'e-mail du dirigeant = 5 crédits. Les infos de base (nom, secteur, ville) sont toujours gratuites."},
-    {q:"Suis-je facturé deux fois pour le même contact ?",a:"Jamais. Si vous avez déjà débloqué le téléphone d'une entreprise, il s'affiche automatiquement sans crédits lors de vos prochaines recherches. Système anti-double-facturation garanti."},
-    {q:"Les données sont-elles fiables ?",               a:"Oui. Sources officielles marocaines, vérifiées régulièrement. 94% des entreprises ont un e-mail valide et 95% un numéro fonctionnel."},
-    {q:"Comment fonctionne le paiement ?",               a:"Vous choisissez votre plan, une facture est générée. Vous effectuez un virement bancaire ou remettez un chèque, notre équipe active votre plan sous 24h. TVA 20% incluse."},
-    {q:"Puis-je exporter vers mon CRM existant ?",       a:"Oui. Export CSV compatible Excel, HubSpot et Salesforce. Le plan Business inclut aussi un accès API pour intégration directe."},
-    {q:"Qu'est-ce que MeetMaster ?",                     a:"MeetMaster est notre marketplace de meetings avec des décideurs marocains — DRH, DAF, Directeurs des Achats. Réservez 30 minutes pour 1 000 MAD."},
-  ]
+  const [open, setOpen] = useState<number | null>(0)
   return (
-    <section id="faq" className="py-24 px-5 bg-[#F7F7F5]">
-      <div className="max-w-[760px] mx-auto">
-        <div className="text-center mb-14"><h2 className="font-extrabold text-ink-1" style={{fontSize:'clamp(26px,3.5vw,40px)',letterSpacing:'-1px',lineHeight:1.2}}>Questions fréquentes</h2></div>
-        <div className="space-y-2">
-          {faqs.map(({q,a},i)=>(
-            <div key={i} className={cn('bg-white rounded-xl border overflow-hidden transition-all duration-200',open===i?'border-brand-200 shadow-[0_2px_12px_rgba(79,70,229,0.07)]':'border-[rgba(0,0,0,0.07)] hover:border-[rgba(0,0,0,0.12)]')}>
-              <button onClick={()=>setOpen(open===i?null:i)} className="w-full flex items-center justify-between px-6 py-5 text-left gap-4" aria-expanded={open===i}>
-                <span className={cn('font-semibold text-[14.5px] leading-snug',open===i?'text-brand-700':'text-ink-1')} style={{letterSpacing:'-0.2px'}}>{q}</span>
-                <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform duration-200',open===i?'rotate-180 text-brand-500':'text-ink-4')}/>
+    <section className="lm-section" id="faq" style={{ background: 'var(--paper)', paddingTop: 40 }}>
+      <div className="lm-wrap">
+        <div style={{ textAlign: 'center' }}>
+          <span className="lm-kicker lm-reveal" style={{ justifyContent: 'center' }}>
+            <Star8 size={10} /> FAQ
+          </span>
+          <h2 className="lm-h2 lm-reveal" data-d="1">Les questions qu’on nous pose.</h2>
+        </div>
+        <div className="lm-faq">
+          {FAQS.map((f, i) => (
+            <div className={`lm-faq-item lm-reveal${open === i ? ' open' : ''}`} key={f.q}>
+              <button className="lm-faq-q" onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
+                {f.q} <ChevronDown size={16} />
               </button>
-              {open===i&&<div className="px-6 pb-5 animate-reveal-in"><p className="text-[14px] text-ink-3 leading-relaxed">{a}</p></div>}
+              <div className="lm-faq-a"><p>{f.a}</p></div>
             </div>
           ))}
         </div>
@@ -599,87 +927,72 @@ function FAQ() {
   )
 }
 
-// ─── Final CTA ─────────────────────────────────────────────
+/* ─── Final CTA + Footer ─────────────────────────────────── */
 function FinalCTA() {
-  const sRef = useRef<HTMLElement>(null)
-  useReveal(sRef, '.reveal-item')
   return (
-    <section ref={sRef} className="py-28 px-5 bg-white">
-      <div className="max-w-[780px] mx-auto text-center">
-        <div className="reveal-item inline-flex items-center gap-2 bg-[#F7F7F5] border border-[rgba(0,0,0,0.07)] rounded-pill px-4 py-2 shadow-xs mb-8">
-          <Shield className="w-3.5 h-3.5 text-emerald-500"/>
-          <span className="text-[12px] font-semibold text-ink-3">Sans engagement · Sans carte bancaire · 100 crédits offerts</span>
+    <section className="lm-section" style={{ paddingTop: 20 }}>
+      <div className="lm-wrap">
+        <div className="lm-final lm-reveal">
+          <span className="lm-eyebrow" style={{ justifyContent: 'center' }}>
+            <Star8 size={11} color="var(--maj-hot)" /> Prêt en 2 minutes
+          </span>
+          <h2 style={{ marginTop: 18 }}>Votre prochain client<br />est déjà dans la base.</h2>
+          <p>
+            100 entreprises offertes à l’inscription. Sans carte bancaire,
+            sans engagement — juste de la donnée marocaine, vérifiée.
+          </p>
+          <div style={{ marginTop: 34, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link href="/register" className="lm-btn lm-btn-primary">
+              Créer mon compte <ArrowRight size={15} />
+            </Link>
+            <a href="#donnees" className="lm-btn lm-btn-ghost-dark">
+              <Download size={14} /> Voir le menu des données
+            </a>
+          </div>
         </div>
-        <h2 className="reveal-item font-extrabold text-ink-1 mb-5" style={{fontSize:'clamp(34px,5vw,60px)',letterSpacing:'-2.5px',lineHeight:1.05}}>
-          Prêt à prospecter<br/><span className="text-brand-600">intelligemment ?</span>
-        </h2>
-        <p className="reveal-item text-[18px] text-ink-3 mb-10 leading-relaxed max-w-[460px] mx-auto">
-          Rejoignez LeadMaster et recevez 100 crédits gratuits pour commencer à prospecter dès aujourd&apos;hui.
-        </p>
-        <div className="reveal-item flex flex-wrap items-center justify-center gap-4">
-          <Link href="/register" className="btn-brand btn-xl group shadow-[0_8px_32px_rgba(79,70,229,0.3)]">
-            Créer mon compte gratuitement <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform"/>
-          </Link>
-          <Link href="/login" className="btn-ghost btn-lg">J&apos;ai déjà un compte</Link>
-        </div>
-        <p className="reveal-item text-[13px] text-ink-4 mt-5">100 crédits = ~50 numéros de téléphone débloqués</p>
       </div>
     </section>
   )
 }
 
-// ─── Footer ────────────────────────────────────────────────
 function Footer() {
-  const cols = {
-    Produit:[{label:'Fonctionnalités',href:'#features'},{label:'Tarification',href:'#pricing'},{label:'MeetMaster',href:'/meetmaster'},{label:'FAQ',href:'#faq'}],
-    Compte: [{label:'Se connecter',href:'/login'},{label:'Créer un compte',href:'/register'},{label:'Dashboard',href:'/dashboard'}],
-    Contact:[{label:'contact@leadmaster.ma',href:'mailto:contact@leadmaster.ma'},{label:'support@leadmaster.ma',href:'mailto:support@leadmaster.ma'}],
-  }
   return (
-    <footer className="bg-[#0D1117]">
-      <div className="max-w-[1200px] mx-auto px-5 pt-16 pb-10">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-14">
-          <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center gap-2.5 mb-5">
-              <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center"><Target className="w-3.5 h-3.5 text-white"/></div>
-              <span className="font-bold text-white text-[15px] tracking-tight">LeadMaster</span>
-            </div>
-            <p className="text-[13px] text-[rgba(255,255,255,0.35)] leading-relaxed mb-5 max-w-[200px]">La plateforme de prospection B2B pour le marché marocain.</p>
-            <div className="flex items-center gap-1.5 text-[11px] text-[rgba(255,255,255,0.3)]"><Globe className="w-3 h-3"/><span>Casablanca · Maroc</span></div>
-          </div>
-          {Object.entries(cols).map(([col,items])=>(
-            <div key={col}>
-              <p className="text-[10px] font-bold uppercase tracking-[1.5px] text-[rgba(255,255,255,0.25)] mb-5">{col}</p>
-              <ul className="space-y-3">{items.map(({label,href})=>(
-                <li key={label}><Link href={href} className="text-[13px] text-[rgba(255,255,255,0.4)] hover:text-white transition-colors">{label}</Link></li>
-              ))}</ul>
-            </div>
-          ))}
+    <footer className="lm-footer">
+      <div className="lm-footer-inner">
+        <Link href="/" className="lm-logo" aria-label="LeadMaster">
+          <span className="lm-logo-mark"><Target size={14} /></span>
+          <span>LeadMaster</span>
+        </Link>
+        <div className="lm-footer-links">
+          <a href="#fonctionnement">Fonctionnalités</a>
+          <a href="#donnees">Données</a>
+          <a href="#tarifs">Tarifs</a>
+          <a href="#faq">FAQ</a>
+          <Link href="/login">Se connecter</Link>
         </div>
-        <div className="border-t border-[rgba(255,255,255,0.05)] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[12px] text-[rgba(255,255,255,0.18)]">© {new Date().getFullYear()} LeadMaster · Tous droits réservés · Maroc</p>
-          <div className="flex items-center gap-6">{['Confidentialité','CGU','Mentions légales'].map(item=>(
-            <button key={item} className="text-[12px] text-[rgba(255,255,255,0.2)] hover:text-[rgba(255,255,255,0.5)] transition-colors">{item}</button>
-          ))}</div>
-        </div>
+        <small>© {new Date().getFullYear()} LeadMaster · Casablanca 🇲🇦</small>
       </div>
     </footer>
   )
 }
 
-// ─── Page Root ─────────────────────────────────────────────
+/* ─── Page ───────────────────────────────────────────────── */
 export default function LandingPage() {
-  const [showBar, setShowBar] = useState(true)
+  const rootRef = useRef<HTMLDivElement>(null)
+  useReveal(rootRef)
   return (
-    <div className="overflow-x-hidden">
-      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[999] bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">Aller au contenu principal</a>
-      {showBar && <AnnouncementBar onDismiss={()=>setShowBar(false)}/>}
-      <Nav hasBar={showBar}/>
-      <main id="main">
-        <Hero/><DataStrip/><HowItWorks/><Features/><FieldPricing/>
-        <Pricing/><MeetMasterSection/><Testimonials/><FAQ/><FinalCTA/>
-      </main>
-      <Footer/>
+    <div className="lm" ref={rootRef}>
+      <style>{CSS}</style>
+      <Nav />
+      <Hero />
+      <Ticker />
+      <Steps />
+      <DataMenu />
+      <Guarantee />
+      <Pricing />
+      <FAQ />
+      <FinalCTA />
+      <Footer />
     </div>
   )
 }
