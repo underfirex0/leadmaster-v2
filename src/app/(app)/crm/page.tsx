@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { FIELD_GROUPS } from '@/lib/constants'
+import { FIELD_GROUPS, EFFECTIF_TRANCHES } from '@/lib/constants'
 import type { FieldGroupId } from '@/lib/constants'
 
 type Status = 'to_call'|'in_progress'|'callback'|'interested'|'not_interested'|'converted'|'archived'
@@ -38,6 +38,25 @@ type Lead = {
   is_pro?: boolean
   pro_dataset_name?: string | null
   pro_extra_fields?: { key:string; label:string; value:string }[]
+  _filter_effectif?: string | null
+  _filter_capital?: string | null
+}
+
+// Capital tranches — same buckets as the Recherche page, for consistent filtering
+const CAPITAL_TRANCHES: { val: string; label: string; min: number; max: number | null }[] = [
+  { val:'0-100000',          label:'Moins de 100 000 MAD', min:0,        max:100000 },
+  { val:'100000-500000',      label:'100 000 — 500 000 MAD', min:100000,  max:500000 },
+  { val:'500000-1000000',     label:'500 000 — 1M MAD',      min:500000,  max:1000000 },
+  { val:'1000000-5000000',    label:'1M — 5M MAD',           min:1000000, max:5000000 },
+  { val:'5000000-10000000',   label:'5M — 10M MAD',          min:5000000, max:10000000 },
+  { val:'10000000-50000000',  label:'10M — 50M MAD',         min:10000000,max:50000000 },
+  { val:'50000000-',          label:'Plus de 50M MAD',       min:50000000,max:null },
+]
+
+function parseCapitalValue(val: unknown): number {
+  if (!val) return NaN
+  const n = parseFloat(String(val).replace(/[^0-9.,]/g, '').replace(',', '.').replace(/\s/g, ''))
+  return isNaN(n) ? NaN : n
 }
 
 function timeAgo(d:string) {
@@ -460,6 +479,9 @@ export default function CRMPage() {
   const [cityFilter,     setCityFilter]     = useState('')
   const [sectorFilter,   setSectorFilter]   = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
+  const [effectifFilters, setEffectifFilters] = useState<string[]>([])
+  const [capitalFilters,  setCapitalFilters]  = useState<string[]>([])
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   function showToast(msg:string, type:'success'|'error'='success') {
     setToast({msg,type}); setTimeout(()=>setToast(null),3500)
@@ -549,6 +571,17 @@ export default function CRMPage() {
     if (cityFilter     && l.city   !== cityFilter)     return false
     if (sectorFilter   && l.sector !== sectorFilter)   return false
     if (priorityFilter && l.priority !== priorityFilter) return false
+    if (effectifFilters.length > 0 && !effectifFilters.includes(l._filter_effectif ?? '')) return false
+    if (capitalFilters.length > 0) {
+      const cap = parseCapitalValue(l._filter_capital)
+      if (isNaN(cap)) return false
+      const inAnyTranche = capitalFilters.some(fval => {
+        const t = CAPITAL_TRANCHES.find(ct => ct.val === fval)
+        if (!t) return false
+        return cap >= t.min && (t.max === null || cap < t.max)
+      })
+      if (!inAnyTranche) return false
+    }
     return true
   })
   const totalPages = Math.ceil(filteredLeads.length / PER_PAGE)
@@ -644,8 +677,16 @@ export default function CRMPage() {
                 <option value="normal">⚪ Normale</option>
                 <option value="low">🔵 Basse</option>
               </select>
-              {(cityFilter||sectorFilter||priorityFilter) && (
-                <button onClick={()=>{setCityFilter('');setSectorFilter('');setPriorityFilter('');setPage(1)}}
+              <button onClick={()=>setFiltersOpen(o=>!o)}
+                className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 text-[12.5px] font-medium transition-colors ${(effectifFilters.length>0||capitalFilters.length>0) ? 'border-indigo-300 text-indigo-700 bg-indigo-50' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                Effectif / Capital
+                {(effectifFilters.length+capitalFilters.length)>0 && (
+                  <span className="text-[10px] font-bold bg-indigo-600 text-white rounded-full w-4 h-4 flex items-center justify-center">{effectifFilters.length+capitalFilters.length}</span>
+                )}
+                <ChevronDown className={cn('w-3 h-3 transition-transform', filtersOpen && 'rotate-180')} />
+              </button>
+              {(cityFilter||sectorFilter||priorityFilter||effectifFilters.length>0||capitalFilters.length>0) && (
+                <button onClick={()=>{setCityFilter('');setSectorFilter('');setPriorityFilter('');setEffectifFilters([]);setCapitalFilters([]);setPage(1)}}
                   className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
                   <X className="w-3 h-3"/> Réinitialiser
                 </button>
@@ -656,6 +697,50 @@ export default function CRMPage() {
                 </span>
               )}
             </div>
+
+            {/* Effectif / Capital panel */}
+            {filtersOpen && (
+              <div className="grid sm:grid-cols-2 gap-4 pt-3 border-t border-gray-100">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11.5px] font-semibold text-gray-500">Effectif (salariés)</span>
+                    {effectifFilters.length>0 && (
+                      <button onClick={()=>{setEffectifFilters([]);setPage(1)}} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">Effacer</button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                    {EFFECTIF_TRANCHES.map(t=>{
+                      const checked = effectifFilters.includes(t.value)
+                      return (
+                        <button key={t.value} onClick={()=>{setEffectifFilters(p=>checked?p.filter(v=>v!==t.value):[...p,t.value]);setPage(1)}}
+                          className={`text-[11.5px] px-2.5 py-1 rounded-full border transition-colors ${checked?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                          {t.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11.5px] font-semibold text-gray-500">Tranche de capital</span>
+                    {capitalFilters.length>0 && (
+                      <button onClick={()=>{setCapitalFilters([]);setPage(1)}} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">Effacer</button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                    {CAPITAL_TRANCHES.map(t=>{
+                      const checked = capitalFilters.includes(t.val)
+                      return (
+                        <button key={t.val} onClick={()=>{setCapitalFilters(p=>checked?p.filter(v=>v!==t.val):[...p,t.val]);setPage(1)}}
+                          className={`text-[11.5px] px-2.5 py-1 rounded-full border transition-colors ${checked?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                          {t.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

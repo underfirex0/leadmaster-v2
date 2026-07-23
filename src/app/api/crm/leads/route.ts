@@ -177,6 +177,11 @@ export async function GET(request: NextRequest) {
         richness:         richnessScore(uf, avail) + (isPro ? 100 : 0), // Pro leads always float to top
         refund_status:    (refundMap[lead.id as string] ?? null) as string|null,
         is_pro:           isPro,
+        // Filter-only raw values — NOT masked by unlock status. Filtering by
+        // "50-99 employees" doesn't reveal the actual unlocked field value to
+        // the user, it only narrows a list they already own in their CRM.
+        _filter_effectif: isPro ? ((cf.effectif as string) || null) : ((c?.effectif as string) || null),
+        _filter_capital:  isPro ? ((cf.capital  as string) || null) : ((c?.capital  as string) || null),
         pro_dataset_name: isPro ? ((cf.dataset_name as string) ?? 'DATA Pro') : null,
         pro_extra_fields: proExtraFields,
       }
