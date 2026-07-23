@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Search, ChevronLeft, ChevronRight, Loader2, Plus, X, CreditCard, CheckCircle } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Loader2, Plus, X, CreditCard, CheckCircle, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 function fmt(n: number) { return new Intl.NumberFormat('fr-MA').format(n) }
@@ -139,6 +139,97 @@ function UserModal({ user, onClose, onSuccess }: { user:User; onClose:()=>void; 
   )
 }
 
+function CreateUserModal({ onClose, onSuccess }: { onClose:()=>void; onSuccess:()=>void }) {
+  const [email, setEmail]       = useState('')
+  const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [planId, setPlanId]     = useState('decouverte')
+  const [credits, setCredits]   = useState(100)
+  const [makeAdmin, setMakeAdmin] = useState(false)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string|null>(null)
+
+  async function handleCreate() {
+    setError(null)
+    if (!email.trim())            { setError('E-mail requis'); return }
+    if (password.length < 6)      { setError('Mot de passe : 6 caractères minimum'); return }
+    setLoading(true)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, full_name: fullName || null, plan_id: planId, credit_balance: credits, is_admin: makeAdmin }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Erreur'); setLoading(false); return }
+      onSuccess(); onClose()
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg shadow-2xl">
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="font-bold text-[15px] text-gray-900">Créer un utilisateur</p>
+            <p className="text-[12px] text-gray-400">Le compte sera actif immédiatement, sans e-mail de confirmation.</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="text-[12px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Nom complet</label>
+            <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Karim Benjelloun"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:border-indigo-400" />
+          </div>
+          <div>
+            <label className="text-[12px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">E-mail</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="karim@exemple.ma"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-[14px] focus:outline-none focus:border-indigo-400" />
+          </div>
+          <div>
+            <label className="text-[12px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Mot de passe</label>
+            <input type="text" value={password} onChange={e=>setPassword(e.target.value)} placeholder="6 caractères minimum"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-[14px] font-mono focus:outline-none focus:border-indigo-400" />
+          </div>
+          <div>
+            <label className="text-[12px] font-bold text-gray-500 uppercase tracking-wide mb-2 block">Plan de départ</label>
+            <div className="grid grid-cols-2 gap-2">
+              {PLANS.map(p=>(
+                <button key={p} onClick={()=>setPlanId(p)}
+                  className={cn('py-2 rounded-xl border-2 text-[13px] font-semibold transition-all',
+                    planId===p ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-100 text-gray-600 hover:border-gray-200')}>
+                  {PLAN_LABEL[p]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-[12px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Crédits de départ</label>
+            <input type="number" value={credits} onChange={e=>setCredits(Number(e.target.value))}
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-[14px] font-mono focus:outline-none focus:border-indigo-400" />
+          </div>
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={makeAdmin} onChange={e=>setMakeAdmin(e.target.checked)}
+              className="w-4 h-4 rounded accent-indigo-600" />
+            <span className="text-[13px] text-gray-600 font-medium">Donner les droits admin à ce compte</span>
+          </label>
+
+          {error && <p className="text-[13px] text-red-600 font-medium">{error}</p>}
+
+          <button onClick={handleCreate} disabled={loading}
+            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-[14px] hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 flex items-center justify-center gap-2 disabled:opacity-60">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Plus className="w-4 h-4"/>}
+            Créer le compte
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers]   = useState<User[]>([])
   const [total, setTotal]   = useState(0)
@@ -147,6 +238,9 @@ export default function AdminUsersPage() {
   const [planFilter, setPlanFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<User|null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [deleting, setDeleting] = useState<string|null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<User|null>(null)
   const PER_PAGE = 20
 
   const fetch_ = useCallback(async () => {
@@ -163,16 +257,63 @@ export default function AdminUsersPage() {
 
   useEffect(() => { fetch_() }, [fetch_])
 
+  const [toast, setToast] = useState<string|null>(null)
+  function showToast(msg:string) { setToast(msg); setTimeout(()=>setToast(null), 3000) }
+
+  async function handleDelete(u: User) {
+    setDeleting(u.id)
+    try {
+      const res = await fetch(`/api/admin/users/${u.id}`, { method: 'DELETE' })
+      const d = await res.json()
+      if (!res.ok) { showToast(d.error || 'Erreur lors de la suppression'); return }
+      showToast('Utilisateur supprimé')
+      setConfirmDelete(null)
+      await fetch_()
+    } finally { setDeleting(null) }
+  }
+
   const totalPages = Math.ceil(total / PER_PAGE)
 
   return (
     <div>
       {selected && <UserModal user={selected} onClose={()=>setSelected(null)} onSuccess={fetch_} />}
+      {showCreate && <CreateUserModal onClose={()=>setShowCreate(false)} onSuccess={()=>{ fetch_(); showToast('Utilisateur créé') }} />}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-4 py-2 rounded-xl text-[13px] font-semibold z-[60] shadow-lg">
+          {toast}
+        </div>
+      )}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6">
+            <p className="font-bold text-[16px] text-gray-900 mb-2">Supprimer cet utilisateur ?</p>
+            <p className="text-[13px] text-gray-500 mb-1">
+              <strong>{confirmDelete.full_name || confirmDelete.email}</strong> et toutes ses données (CRM, recherches, déverrouillages) seront supprimés définitivement.
+            </p>
+            <p className="text-[12.5px] text-red-500 font-medium mb-5">Cette action est irréversible.</p>
+            <div className="flex gap-2">
+              <button onClick={()=>setConfirmDelete(null)} disabled={deleting===confirmDelete.id}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                Annuler
+              </button>
+              <button onClick={()=>handleDelete(confirmDelete)} disabled={deleting===confirmDelete.id}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[13px] font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                {deleting===confirmDelete.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Trash2 className="w-4 h-4"/>}
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-[22px] font-bold text-gray-900">Utilisateurs</h1>
           <p className="text-gray-400 text-[13px]">{total} comptes au total</p>
         </div>
+        <button onClick={()=>setShowCreate(true)}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-[13px] font-bold hover:bg-indigo-700 transition-colors shadow-sm shrink-0">
+          <Plus className="w-4 h-4" /> Créer un utilisateur
+        </button>
       </div>
       <div className="flex gap-2 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
@@ -224,10 +365,16 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3 font-mono text-[13px] text-gray-700 font-semibold">{fmt(u.credit_balance)}</td>
                   <td className="px-4 py-3 text-[12px] text-gray-400">{fmtDate(u.created_at)}</td>
                   <td className="px-4 py-3">
-                    <button onClick={()=>setSelected(u)}
-                      className="text-[12px] font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
-                      Gérer
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={()=>setSelected(u)}
+                        className="text-[12px] font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                        Gérer
+                      </button>
+                      <button onClick={()=>setConfirmDelete(u)} title="Supprimer"
+                        className="text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
