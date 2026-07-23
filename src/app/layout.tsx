@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     type: 'website',
   },
   icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>",
+    icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 68 40'%3E%3Crect width='68' height='40' rx='20' fill='%236EE7B7'/%3E%3Ccircle cx='48' cy='20' r='17' fill='%230A0A0A'/%3E%3Cpath d='M40 20.5L45 25.5L56 14.5' stroke='%23FFFDF7' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
   },
 }
 

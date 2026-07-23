@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AlertCircle, Loader2, Target, ArrowRight } from 'lucide-react'
+import { Logo } from '@/components/Logo'
 
 function LoginForm() {
   const router = useRouter()
@@ -57,10 +58,7 @@ export default function LoginPage() {
       <div className="w-full max-w-[400px]">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6 group">
-            <div className="w-8 h-8 bg-brand-600 rounded-[9px] flex items-center justify-center group-hover:bg-brand-700 transition-colors shadow-sm">
-              <Target className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-ink-1 text-[16px] tracking-tight">LeadScout</span>
+            <Logo markSize={26} wordmarkClassName="text-ink-1 text-[16px]" />
           </Link>
           <h1 className="font-bold text-ink-1 mb-2" style={{ fontSize: '24px', letterSpacing: '-0.5px' }}>Bon retour 👋</h1>
           <p className="text-[14px] text-ink-3">

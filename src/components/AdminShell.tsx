@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { Logo } from '@/components/Logo'
 import { cn } from '@/lib/utils'
 
 interface AdminShellProps {
@@ -50,14 +51,9 @@ export default function AdminShell({ children, name, email, pendingCount, import
       {/* Logo */}
       <div className={cn('px-5 py-5 border-b', mobile ? 'border-gray-100' : 'border-white/10')}>
         <Link href="/admin" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <Target className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <span className={cn('font-bold text-[14px] block leading-none', mobile ? 'text-gray-900' : 'text-white')}>LeadMaster</span>
-            <span className={cn('text-[10px] font-medium', mobile ? 'text-gray-400' : 'text-gray-400')}>Administration</span>
-          </div>
+          <Logo markSize={26} wordmarkClassName={cn(mobile ? 'text-gray-900' : 'text-white', 'text-[14px]')} />
         </Link>
+        <span className={cn('text-[10px] font-medium mt-1 block', mobile ? 'text-gray-400' : 'text-gray-400')}>Administration</span>
       </div>
 
       {/* Nav */}
@@ -115,10 +111,7 @@ export default function AdminShell({ children, name, email, pendingCount, import
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-gray-900 px-4 h-14 flex items-center justify-between">
         <Link href="/admin" className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <Target className="w-3.5 h-3.5 text-white" />
-          </div>
-          <span className="font-bold text-white text-[14px]">Admin</span>
+          <Logo markSize={22} wordmarkClassName="text-white text-[14px]" />
         </Link>
         <div className="flex items-center gap-2">
           {totalPending > 0 && (

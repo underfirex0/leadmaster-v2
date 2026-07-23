@@ -6,6 +6,7 @@ import {
   FileText, BarChart2, LogOut, Target, Shield, Activity, Crown
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Logo } from '@/components/Logo'
 
 const NAV = [
   { href: '/admin',                 label: 'Dashboard',        icon: LayoutDashboard, exact: true },
@@ -39,10 +40,7 @@ export default function AdminNav({ name, email, pendingCount = 0, importsCount =
       {/* Logo */}
       <div className="p-5 border-b border-[rgba(0,0,0,0.05)] shrink-0">
         <Link href="/dashboard" className="flex items-center gap-2 mb-2 group">
-          <div className="w-7 h-7 bg-brand-600 rounded-[8px] flex items-center justify-center group-hover:bg-brand-700 transition-colors">
-            <Target className="w-3.5 h-3.5 text-white" />
-          </div>
-          <span className="font-bold text-ink-1 text-[14px] tracking-tight">LeadMaster</span>
+          <Logo markSize={22} wordmarkClassName="text-ink-1 text-[14px]" />
         </Link>
         <div className="flex items-center gap-1.5">
           <Shield className="w-3 h-3 text-brand-600" />

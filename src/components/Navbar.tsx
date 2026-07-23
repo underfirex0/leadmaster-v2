@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Search, LayoutDashboard, Wallet, LogOut, ChevronDown, Users2, Crown, Target, Settings, Database, Upload, Menu, X, Unlock } from 'lucide-react'
+import { Logo } from '@/components/Logo'
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { Profile } from '@/types'
@@ -55,10 +56,7 @@ export default function Navbar({ profile, blockedFeatures = [] }: NavbarProps) {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-gray-100 shadow-sm">
         <div className="max-w-[1280px] mx-auto px-4 h-14 flex items-center gap-3">
           <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
-            <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center shadow-sm">
-              <Target className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="font-bold text-gray-900 text-[15px] tracking-tight">LeadMaster</span>
+            <Logo markSize={22} wordmarkClassName="text-gray-900 text-[15px]" />
           </Link>
 
           <nav className="hidden lg:flex items-center gap-0.5 mx-4 flex-1">
@@ -143,7 +141,7 @@ export default function Navbar({ profile, blockedFeatures = [] }: NavbarProps) {
           <div className="absolute inset-0 bg-black/40" />
           <div className="relative ml-auto w-[280px] h-full bg-white flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-4 border-b">
-              <span className="font-bold text-gray-900">LeadMaster</span>
+              <Logo markSize={20} wordmarkClassName="text-gray-900 text-[14px]" />
               <button onClick={() => setMobileOpen(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <nav className="flex-1 p-3 space-y-1">

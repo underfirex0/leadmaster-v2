@@ -11,6 +11,7 @@ import {
   PlayCircle, Globe, BarChart2, CalendarClock, Filter, Unlock
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Logo, LogoMark } from '@/components/Logo'
 
 // No ScrollTrigger — using IntersectionObserver instead (production-safe)
 const HeroCanvas = dynamic(
@@ -76,10 +77,7 @@ function Nav({ hasBar }: { hasBar: boolean }) {
         <div className={cn('flex items-center justify-between px-5 h-14 rounded-pill transition-all duration-300',
           scrolled ? 'bg-white/95 backdrop-blur-xl shadow-[0_4px_32px_rgba(0,0,0,0.07),0_0_0_1px_rgba(0,0,0,0.05)]' : 'bg-transparent')}>
           <Link href="/" className="flex items-center gap-2.5 shrink-0 group" aria-label="LeadMaster">
-            <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center shadow-sm group-hover:bg-brand-700 transition-colors">
-              <Target className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="font-bold text-ink-1 text-[15px] tracking-tight">LeadMaster</span>
+            <Logo markSize={24} wordmarkClassName="text-ink-1 text-[15px]" />
           </Link>
           <div className="hidden md:flex items-center gap-0.5">
             {links.map(l => (
@@ -142,8 +140,8 @@ function ProductMockup() {
         </div>
         <div className="bg-white px-4 py-2.5 border-b border-[rgba(0,0,0,0.05)] flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 bg-brand-600 rounded-md flex items-center justify-center"><Target className="w-2.5 h-2.5 text-white" /></div>
-            <span className="text-[11px] font-bold text-ink-1">LeadMaster</span>
+            <LogoMark size={16} />
+            <span className="text-[11px] font-bold text-ink-1 lowercase">leadmaster</span>
           </div>
           <div className="flex items-center gap-0.5 ml-1">
             {['Dashboard','Prospecter','CRM'].map((item, i) => (
@@ -641,8 +639,7 @@ function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-14">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2.5 mb-5">
-              <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center"><Target className="w-3.5 h-3.5 text-white"/></div>
-              <span className="font-bold text-white text-[15px] tracking-tight">LeadMaster</span>
+              <Logo markSize={24} wordmarkClassName="text-white text-[15px]" />
             </div>
             <p className="text-[13px] text-[rgba(255,255,255,0.35)] leading-relaxed mb-5 max-w-[200px]">La plateforme de prospection B2B pour le marché marocain.</p>
             <div className="flex items-center gap-1.5 text-[11px] text-[rgba(255,255,255,0.3)]"><Globe className="w-3 h-3"/><span>Casablanca · Maroc</span></div>

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AlertCircle, Loader2, CheckCircle, Target, ArrowRight, Check } from 'lucide-react'
+import { Logo } from '@/components/Logo'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -42,10 +43,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-[400px]">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6 group">
-            <div className="w-8 h-8 bg-brand-600 rounded-[9px] flex items-center justify-center group-hover:bg-brand-700 transition-colors shadow-sm">
-              <Target className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-ink-1 text-[16px] tracking-tight">LeadScout</span>
+            <Logo markSize={26} wordmarkClassName="text-ink-1 text-[16px]" />
           </Link>
           <h1 className="font-bold text-ink-1 mb-2" style={{ fontSize: '24px', letterSpacing: '-0.5px' }}>Créer un compte</h1>
           <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-100 rounded-pill px-3 py-1.5 text-[12px] font-semibold text-emerald-700 mb-1">
