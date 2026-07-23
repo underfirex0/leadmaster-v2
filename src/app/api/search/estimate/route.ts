@@ -14,9 +14,9 @@ function parseCapital(val: unknown): number {
 
 // Apply shared filters to any query builder
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyFilters(q: any, { sectors, domaines, activites, cities, name, effectif }: {
+function applyFilters(q: any, { sectors, domaines, activites, cities, name, effectif, effectifs }: {
   sectors: string[]; domaines: string[]; activites: string[]
-  cities: string[]; name: string; effectif?: string
+  cities: string[]; name: string; effectif?: string; effectifs?: string[]
 }) {
   if (sectors.length || domaines.length || activites.length) {
     const parts: string[] = []
@@ -27,8 +27,10 @@ function applyFilters(q: any, { sectors, domaines, activites, cities, name, effe
   }
   if (cities.length)  q = q.in('city', cities)
   if (name.trim())    q = q.ilike('name', `%${name.trim()}%`)
-  // Effectif is an EXACT string value in DB — filter directly, no in-memory needed
-  if (effectif)       q = q.eq('effectif', effectif)
+  // Multi-select effectif: use .in() for array, .eq() for single
+  const allEffectifs = effectifs && effectifs.length > 0 ? effectifs : (effectif ? [effectif] : [])
+  if (allEffectifs.length === 1) q = q.eq('effectif', allEffectifs[0])
+  if (allEffectifs.length > 1)  q = q.in('effectif', allEffectifs)
   return q
 }
 
@@ -42,12 +44,13 @@ export async function POST(request: NextRequest) {
       sectors=[], domaines=[], activites=[], cities=[], name='',
       fields=['basic'], limit=50,
       capital_min, capital_max,
-      effectif,                        // exact string e.g. "De 20 à 49 salariés"
+      effectif,    // single value (legacy)
+      effectifs,   // multi-select array (new)
     } = await request.json()
 
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
     const dataColumns = 'id,' + Object.values(FIELD_GROUPS).flatMap(f => f.columns).join(',') + ',effectif'
-    const filterArgs = { sectors, domaines, activites, cities, name, effectif }
+    const filterArgs = { sectors, domaines, activites, cities, name, effectif, effectifs }
 
     // ── 1. Exact DB count (effectif is exact-match → perfectly accurate) ──
     // Capital is still filtered in-memory (TEXT numeric) → apply ratio after

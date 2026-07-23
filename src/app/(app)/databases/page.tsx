@@ -1,7 +1,7 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { Search, Clock, Download, Eye, Trash2, Loader2, Database, ArrowRight, Filter, Crown } from 'lucide-react'
+import { Search, Clock, Download, Eye, Trash2, Loader2, Database, ArrowRight, Filter, Crown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type Query = {
@@ -76,6 +76,25 @@ export default function DatabasesPage() {
 
   const totalCompanies = queries.reduce((s, q) => s + q.result_count, 0)
   const totalCredits   = queries.reduce((s, q) => s + q.credits_spent, 0)
+
+  // ── Client-side filters ───────────────────────────────────
+  const [qSearch, setQSearch]       = useState('')
+  const [cityFilter, setCityFilter] = useState('')
+  const [sectorFilter, setSectorFilter] = useState('')
+
+  // Collect unique cities and sectors from saved queries
+  const allCities   = useMemo(() => [...new Set(queries.flatMap(q => q.filters.cities ?? []))].sort(), [queries])
+  const allSectors  = useMemo(() => [...new Set(queries.flatMap(q => q.filters.sectors ?? []))].sort(), [queries])
+
+  const filteredQueries = useMemo(() => queries.filter(q => {
+    const tags = describeFilters(q).join(' ').toLowerCase()
+    if (qSearch && !tags.includes(qSearch.toLowerCase())) return false
+    if (cityFilter && !(q.filters.cities ?? []).includes(cityFilter)) return false
+    if (sectorFilter && !(q.filters.sectors ?? []).includes(sectorFilter)) return false
+    return true
+  }), [queries, qSearch, cityFilter, sectorFilter])
+
+  const hasActiveFilter = qSearch || cityFilter || sectorFilter
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -153,8 +172,50 @@ export default function DatabasesPage() {
             </Link>
           </div>
         ) : (
+          <>
+            {/* Filter bar */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                  <input value={qSearch} onChange={e => setQSearch(e.target.value)}
+                    placeholder="Rechercher une recherche..."
+                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-[13px] focus:outline-none focus:border-indigo-300 bg-gray-50/50" />
+                </div>
+                {allCities.length > 0 && (
+                  <select value={cityFilter} onChange={e => setCityFilter(e.target.value)}
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-indigo-300 bg-white text-gray-600">
+                    <option value="">Toutes les villes</option>
+                    {allCities.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                )}
+                {allSectors.length > 0 && (
+                  <select value={sectorFilter} onChange={e => setSectorFilter(e.target.value)}
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-indigo-300 bg-white text-gray-600 max-w-[200px] truncate">
+                    <option value="">Tous les secteurs</option>
+                    {allSectors.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                )}
+                {hasActiveFilter && (
+                  <button onClick={() => { setQSearch(''); setCityFilter(''); setSectorFilter('') }}
+                    className="flex items-center gap-1.5 text-[12px] font-medium text-gray-400 hover:text-gray-700 transition-colors">
+                    <X className="w-3.5 h-3.5" /> Réinitialiser
+                  </button>
+                )}
+                <span className="text-[12px] text-gray-400 ml-auto">
+                  {filteredQueries.length} / {queries.length} recherche{queries.length > 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+
           <div className="space-y-3">
-            {queries.map(q => (
+            {filteredQueries.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center">
+                <p className="text-gray-400 text-[14px]">Aucune recherche ne correspond aux filtres sélectionnés.</p>
+                <button onClick={() => { setQSearch(''); setCityFilter(''); setSectorFilter('') }}
+                  className="text-[13px] text-indigo-600 font-semibold mt-2 hover:underline">Réinitialiser les filtres</button>
+              </div>
+            ) : filteredQueries.map(q => (
               <div key={q.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex-1 min-w-0">
@@ -202,6 +263,7 @@ export default function DatabasesPage() {
               </div>
             ))}
           </div>
+          </>
         )}
       </div>
     </div>

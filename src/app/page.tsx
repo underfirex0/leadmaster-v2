@@ -231,7 +231,7 @@ function Hero() {
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"/><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"/>
               </span>
-              <span className="text-[12px] font-semibold text-ink-2">275 000 entreprises marocaines vérifiées</span>
+              <span className="text-[12px] font-semibold text-ink-2">Des millions de données B2B marocaines</span>
             </div>
             <h1 ref={headRef} className="font-extrabold text-ink-1 leading-[1.05] mb-6" style={{ fontSize:'clamp(38px,5.5vw,66px)', letterSpacing:'-2.5px' }}>
               Prospectez le Maroc.{' '}
@@ -261,7 +261,7 @@ function Hero() {
                   </div>
                 ))}
               </div>
-              <span>Rejoint par <strong className="text-ink-2">+200 commerciaux</strong> marocains</span>
+              <span>Rejoint par <strong className="text-ink-2">+1 000 commerciaux</strong> marocains</span>
             </div>
           </div>
           <div ref={mockupRef} className="hidden lg:flex items-center justify-end" aria-hidden="true">
@@ -270,10 +270,10 @@ function Hero() {
         </div>
         <div ref={statsRef} className="grid grid-cols-2 sm:grid-cols-4 gap-6 py-8 border-t border-[rgba(0,0,0,0.06)]">
           {[
-            { count:275000, suffix:'',  label:'Entreprises vérifiées'      },
-            { count:94,  suffix:'%', label:'Avec email professionnel'   },
-            { count:95,  suffix:'%', label:'Avec numéro direct'         },
-            { count:82,  suffix:'',  label:'Contacts direction DAF/DRH' },
+            { count:1,    suffix:'M+',  label:'Données B2B disponibles'      },
+            { count:1000, suffix:'+',   label:'Commerciaux marocains actifs'  },
+            { count:0,    suffix:'cr',  label:'Coût des infos de base (nom, ville, secteur)' },
+            { count:24,   suffix:'h',   label:'Activation du compte après paiement' },
           ].map(({count,suffix,label})=>(
             <div key={label} className="text-center sm:text-left">
               <span className="block text-[30px] sm:text-[34px] font-extrabold text-ink-1 tabular-nums" style={{letterSpacing:'-1.5px',lineHeight:1}} data-count={count} data-suffix={suffix}>
@@ -290,7 +290,7 @@ function Hero() {
 
 // ─── Data Strip ────────────────────────────────────────────
 function DataStrip() {
-  const items = ['275 000 entreprises marocaines','94% avec e-mail professionnel','95% avec téléphone direct','82 contacts direction DAF · DRH','Sources officielles vérifiées','Zéro double facturation','Export CSV compatible Excel & HubSpot']
+  const items = ['Des millions de données B2B','Contacts dirigeants directs','Sources officielles vérifiées','Données vérifiées régulièrement','Zéro double facturation','Export CSV compatible Excel & HubSpot','Protection des données garantie']
   return (
     <div className="bg-brand-600 py-3 overflow-hidden select-none" aria-hidden="true">
       <div className="ticker-track">
@@ -574,7 +574,7 @@ function FAQ() {
   const faqs = [
     {q:"Qu'est-ce qu'un crédit LeadMaster ?",            a:"Un crédit vous permet de débloquer un champ de données pour une entreprise. Voir le numéro de téléphone = 1 crédit, l'e-mail du dirigeant = 5 crédits. Les infos de base (nom, secteur, ville) sont toujours gratuites."},
     {q:"Suis-je facturé deux fois pour le même contact ?",a:"Jamais. Si vous avez déjà débloqué le téléphone d'une entreprise, il s'affiche automatiquement sans crédits lors de vos prochaines recherches. Système anti-double-facturation garanti."},
-    {q:"Les données sont-elles fiables ?",               a:"Oui. Sources officielles marocaines, vérifiées régulièrement. 94% des entreprises ont un e-mail valide et 95% un numéro fonctionnel."},
+    {q:"Les données sont-elles fiables ?",               a:"Oui. Nos données proviennent de sources officielles marocaines et sont vérifiées régulièrement. Nous privilégions la qualité et la fraîcheur des informations pour vous garantir un maximum de contacts joignables."},
     {q:"Comment fonctionne le paiement ?",               a:"Vous choisissez votre plan, une facture est générée. Vous effectuez un virement bancaire ou remettez un chèque, notre équipe active votre plan sous 24h. TVA 20% incluse."},
     {q:"Puis-je exporter vers mon CRM existant ?",       a:"Oui. Export CSV compatible Excel, HubSpot et Salesforce. Le plan Business inclut aussi un accès API pour intégration directe."},
     {q:"Qu'est-ce que MeetMaster ?",                     a:"MeetMaster est notre marketplace de meetings avec des décideurs marocains — DRH, DAF, Directeurs des Achats. Réservez 30 minutes pour 1 000 MAD."},
@@ -658,9 +658,11 @@ function Footer() {
         </div>
         <div className="border-t border-[rgba(255,255,255,0.05)] pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-[12px] text-[rgba(255,255,255,0.18)]">© {new Date().getFullYear()} LeadMaster · Tous droits réservés · Maroc</p>
-          <div className="flex items-center gap-6">{['Confidentialité','CGU','Mentions légales'].map(item=>(
+          <div className="flex items-center flex-wrap gap-4 justify-center sm:justify-end">{['Confidentialité','CGU','Mentions légales'].map(item=>(
             <button key={item} className="text-[12px] text-[rgba(255,255,255,0.2)] hover:text-[rgba(255,255,255,0.5)] transition-colors">{item}</button>
-          ))}</div>
+          ))}
+            <Link href="/protection-des-donnees" className="text-[12px] text-[rgba(255,255,255,0.3)] hover:text-white transition-colors font-medium">Protection des données</Link>
+          </div>
         </div>
       </div>
     </footer>

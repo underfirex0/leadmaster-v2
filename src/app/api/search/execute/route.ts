@@ -44,6 +44,7 @@ async function fetchAllMatching(
     cities: string[], name: string,
     capital_min?: string, capital_max?: string,
     effectif?: string,
+    effectifs?: string[],
   },
   targetRows: number
 ): Promise<Record<string,unknown>[]> {
@@ -69,9 +70,13 @@ async function fetchAllMatching(
       if (activites.length) parts.push(`primary_activite.in.(${activites.map(s=>`"${s}"`).join(',')})`)
       q = q.or(parts.join(','))
     }
-    if (cities.length)     q = q.in('city', cities)
-    if (name.trim())       q = q.ilike('name', `%${name.trim()}%`)
-    if (filters.effectif)  q = q.eq('effectif', filters.effectif)
+    if (cities.length) q = q.in('city', cities)
+    if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
+    // Multi-select effectif
+    const allEffectifs = filters.effectifs && filters.effectifs.length > 0
+      ? filters.effectifs : (filters.effectif ? [filters.effectif] : [])
+    if (allEffectifs.length === 1) q = q.eq('effectif', allEffectifs[0])
+    if (allEffectifs.length > 1)  q = q.in('effectif', allEffectifs)
 
     const { data: batch, error } = await q.range(offset, offset + BATCH - 1).order('name')
     if (error) { console.error(`Batch ${offset} error:`, error); break }
@@ -112,6 +117,7 @@ export async function POST(request: NextRequest) {
       limit=50,
       capital_min, capital_max,
       effectif,
+      effectifs,
     } = body
 
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
@@ -123,6 +129,7 @@ export async function POST(request: NextRequest) {
         capital_min: capital_min ? String(capital_min) : undefined,
         capital_max: capital_max ? String(capital_max) : undefined,
         effectif: effectif || undefined,
+        effectifs: effectifs?.length > 0 ? effectifs : undefined,
       },
       maxCompanies
     )

@@ -216,8 +216,11 @@ export default function SearchPage() {
   const [cityOpen, setCityOpen] = useState(false)
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set(['phone','email']))
   const [maxCompanies, setMaxCompanies] = useState(50)
-  const [capitalTranche, setCapitalTranche] = useState('-')
-  const [effectifTranche, setEffectifTranche] = useState('-')
+  const [capitalTranches, setCapitalTranches] = useState<string[]>([])
+  const [effectifTranches, setEffectifTranches] = useState<string[]>([])
+  // Keep single-value aliases for backward compat with estimate/execute call sites
+  const capitalTranche  = capitalTranches.length === 1 ? capitalTranches[0] : (capitalTranches.length > 1 ? 'multi' : '-')
+  const effectifTranche = effectifTranches.length === 1 ? effectifTranches[0] : (effectifTranches.length > 1 ? 'multi' : '-')
   const [liveCount, setLiveCount] = useState<number|null>(null)
   const [liveLoading, setLiveLoading] = useState(false)
   const [balance, setBalance]   = useState<number|null>(null)
@@ -244,7 +247,15 @@ export default function SearchPage() {
     '10000000-50000000':['10000000','50000000'],
     '50000000-':     ['50000000',''],
   }
-  const [capitalMin, capitalMax] = TRANCHES[capitalTranche] ?? ['','']
+  // For multi-select capital: take the overall min and max across selected tranches
+  const capitalMin = capitalTranches.length === 0 ? '' :
+    capitalTranches.map(t => TRANCHES[t]?.[0] ?? '').filter(Boolean).sort((a,b)=>parseFloat(a)-parseFloat(b))[0] ?? ''
+  const capitalMax = capitalTranches.length === 0 ? '' :
+    (() => {
+      const maxVals = capitalTranches.map(t => TRANCHES[t]?.[1] ?? '').filter(Boolean)
+      if (maxVals.length < capitalTranches.length) return '' // one is open-ended (50M+)
+      return maxVals.sort((a,b)=>parseFloat(b)-parseFloat(a))[0] ?? ''
+    })()
 
   useEffect(() => {
     fetch('/api/me/balance').then(r=>r.json()).then(d=>setBalance(d.balance))
@@ -283,7 +294,7 @@ export default function SearchPage() {
 
   // Live count — debounced 600ms
   useEffect(() => {
-    const hasFilters = selected.size>0 || cities.length>0 || nameSearch.trim() || capitalTranche!=='-' || effectifTranche!=='-'
+    const hasFilters = selected.size>0 || cities.length>0 || nameSearch.trim() || capitalTranches.length>0 || effectifTranches.length>0
     if (!hasFilters) { setLiveCount(null); return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setLiveLoading(true)
@@ -294,7 +305,7 @@ export default function SearchPage() {
           body: JSON.stringify({ activites:[...selected], cities, name:nameSearch,
             fields:[...selectedFields,'basic'], limit:maxCompanies,
             capital_min:capitalMin||undefined, capital_max:capitalMax||undefined,
-            effectif: effectifTranche!=='-'?effectifTranche:undefined }),
+            effectifs: effectifTranches.length>0 ? effectifTranches : undefined }),
         })
         const d = await r.json()
         setLiveCount(d.count??0)
@@ -302,7 +313,7 @@ export default function SearchPage() {
         setFreeTrialAvail(d.freeTrialEligible??false)
       } finally { setLiveLoading(false) }
     }, 600)
-  }, [selected, cities, nameSearch, selectedFields, maxCompanies, capitalTranche, effectifTranche])
+  }, [selected, cities, nameSearch, selectedFields, maxCompanies, capitalTranches, effectifTranches])
 
   const toggleRub = useCallback((slug:string,on:boolean) => {
     setSelected(prev=>{const n=new Set(prev);on?n.add(slug):n.delete(slug);return n})
@@ -313,16 +324,22 @@ export default function SearchPage() {
   }
   function applyPreset(fields:string[]) { setSelectedFields(new Set(fields)) }
 
-  // When capital tranche selected → auto-check capital field
+  // Capital multi-select toggle
   function handleCapitalTranche(val:string) {
-    setCapitalTranche(val)
-    if (val !== '-') setSelectedFields(prev => new Set([...prev,'capital']))
+    setCapitalTranches(prev => {
+      const next = prev.includes(val) ? prev.filter(v=>v!==val) : [...prev, val]
+      if (next.length > 0) setSelectedFields(p => new Set([...p,'capital']))
+      return next
+    })
   }
 
-  // When effectif tranche selected → auto-check effectif field
+  // Effectif multi-select toggle
   function handleEffectifTranche(val:string) {
-    setEffectifTranche(val)
-    if (val !== '-') setSelectedFields(prev => new Set([...prev,'effectif']))
+    setEffectifTranches(prev => {
+      const next = prev.includes(val) ? prev.filter(v=>v!==val) : [...prev, val]
+      if (next.length > 0) setSelectedFields(p => new Set([...p,'effectif']))
+      return next
+    })
   }
 
   const costPerBiz = useMemo(() => {
@@ -334,7 +351,7 @@ export default function SearchPage() {
   }, [selectedFields])
 
   const maxEstCost = costPerBiz * maxCompanies
-  const hasFilter = selected.size>0 || cities.length>0 || nameSearch.trim() || capitalTranche!=='-' || effectifTranche!=='-'
+  const hasFilter = selected.size>0 || cities.length>0 || nameSearch.trim() || capitalTranches.length>0 || effectifTranches.length>0
   const isFreeTrial = freeTrialAvail && selectedFields.size===0 && maxCompanies<=100
 
   const filteredCities = useMemo(() =>
@@ -356,7 +373,7 @@ export default function SearchPage() {
         body: JSON.stringify({ activites:[...selected], cities, name:nameSearch,
           fields:[...selectedFields], limit:maxCompanies,
           capital_min:capitalMin||undefined, capital_max:capitalMax||undefined,
-            effectif: effectifTranche!=='-'?effectifTranche:undefined }),
+            effectifs: effectifTranches.length>0 ? effectifTranches : undefined }),
       })
       const d = await r.json()
       if (!r.ok) { showToast(d.error||'Erreur estimation','error'); return }
@@ -375,7 +392,7 @@ export default function SearchPage() {
         body: JSON.stringify({ activites:[...selected], cities, name:nameSearch,
           fields:[...selectedFields], limit:maxCompanies,
           capital_min:capitalMin||undefined, capital_max:capitalMax||undefined,
-            effectif: effectifTranche!=='-'?effectifTranche:undefined }),
+            effectifs: effectifTranches.length>0 ? effectifTranches : undefined }),
       })
       const d = await r.json()
       if (!r.ok) { setConfirmData(null); showToast(d.error||'Erreur','error'); return }
@@ -514,37 +531,65 @@ export default function SearchPage() {
                   )}
                 </div>
 
-                {/* Capital tranche */}
+                {/* Capital tranche — multi-select checkboxes */}
                 <div className="sm:col-span-2">
-                  <label className="text-[12px] font-medium text-gray-500 mb-1 block">Tranche de capital</label>
-                  <select value={capitalTranche} onChange={e=>handleCapitalTranche(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none focus:border-indigo-400 bg-white">
-                    <option value="-">Toutes les tranches</option>
-                    <option value="0-100000">Moins de 100 000 MAD</option>
-                    <option value="100000-500000">100 000 — 500 000 MAD</option>
-                    <option value="500000-1000000">500 000 — 1 000 000 MAD</option>
-                    <option value="1000000-5000000">1M — 5M MAD</option>
-                    <option value="5000000-10000000">5M — 10M MAD</option>
-                    <option value="10000000-50000000">10M — 50M MAD</option>
-                    <option value="50000000-">Plus de 50M MAD</option>
-                  </select>
-                  {capitalTranche!=='-'&&(
-                    <p className="text-[11.5px] text-amber-600 mt-1">💡 "Capital social" ajouté automatiquement à vos champs</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[12px] font-medium text-gray-500">Tranche de capital</label>
+                    {capitalTranches.length > 0 && (
+                      <button onClick={() => setCapitalTranches([])} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">
+                        Effacer ({capitalTranches.length})
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {[
+                      { val:'0-100000',         label:'Moins de 100 000 MAD' },
+                      { val:'100000-500000',     label:'100 000 — 500 000 MAD' },
+                      { val:'500000-1000000',    label:'500 000 — 1M MAD' },
+                      { val:'1000000-5000000',   label:'1M — 5M MAD' },
+                      { val:'5000000-10000000',  label:'5M — 10M MAD' },
+                      { val:'10000000-50000000', label:'10M — 50M MAD' },
+                      { val:'50000000-',         label:'Plus de 50M MAD' },
+                    ].map(({ val, label }) => {
+                      const checked = capitalTranches.includes(val)
+                      return (
+                        <label key={val} className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-600'}`}>
+                          <input type="checkbox" checked={checked} onChange={() => handleCapitalTranche(val)}
+                            className="w-3.5 h-3.5 accent-indigo-600 shrink-0" />
+                          <span className="text-[12.5px] font-medium">{label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {capitalTranches.length > 0 && (
+                    <p className="text-[11.5px] text-amber-600 mt-2">💡 &quot;Capital social&quot; ajouté automatiquement à vos champs</p>
                   )}
                 </div>
 
-                {/* Effectif (tranche de salariés) */}
+                {/* Effectif — multi-select checkboxes */}
                 <div className="sm:col-span-2">
-                  <label className="text-[12px] font-medium text-gray-500 mb-1 block">Effectif (salariés)</label>
-                  <select value={effectifTranche} onChange={e=>handleEffectifTranche(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] focus:outline-none focus:border-indigo-400 bg-white">
-                    <option value="-">Toutes les tailles</option>
-                    {EFFECTIF_TRANCHES.map(t=>(
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                  {effectifTranche!=='-'&&(
-                    <p className="text-[11.5px] text-amber-600 mt-1">💡 "Effectif" ajouté automatiquement à vos champs</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[12px] font-medium text-gray-500">Effectif (salariés)</label>
+                    {effectifTranches.length > 0 && (
+                      <button onClick={() => setEffectifTranches([])} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">
+                        Effacer ({effectifTranches.length})
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {EFFECTIF_TRANCHES.map(t => {
+                      const checked = effectifTranches.includes(t.value)
+                      return (
+                        <label key={t.value} className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-600'}`}>
+                          <input type="checkbox" checked={checked} onChange={() => handleEffectifTranche(t.value)}
+                            className="w-3.5 h-3.5 accent-indigo-600 shrink-0" />
+                          <span className="text-[12.5px] font-medium">{t.label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {effectifTranches.length > 0 && (
+                    <p className="text-[11.5px] text-amber-600 mt-2">💡 &quot;Effectif&quot; ajouté automatiquement à vos champs</p>
                   )}
                 </div>
               </div>

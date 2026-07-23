@@ -456,6 +456,11 @@ export default function CRMPage() {
   const PER_PAGE = 50
   const [page, setPage] = useState(1)
 
+  // Extra filters
+  const [cityFilter,     setCityFilter]     = useState('')
+  const [sectorFilter,   setSectorFilter]   = useState('')
+  const [priorityFilter, setPriorityFilter] = useState('')
+
   function showToast(msg:string, type:'success'|'error'='success') {
     setToast({msg,type}); setTimeout(()=>setToast(null),3500)
   }
@@ -536,8 +541,18 @@ export default function CRMPage() {
     {key:'converted',   label:'Converti',   cnt:counts.converted||0},
     {key:'archived',    label:'Archivé',    cnt:counts.archived||0},
   ]
-  const totalPages = Math.ceil(leads.length / PER_PAGE)
-  const pagedLeads = leads.slice((page-1)*PER_PAGE, page*PER_PAGE)
+  // Collect unique cities and sectors from loaded leads for filter dropdowns
+  const crmCities   = [...new Set(leads.map(l => l.city).filter(Boolean))].sort()
+  const crmSectors  = [...new Set(leads.map(l => l.sector).filter(Boolean))].sort()
+
+  const filteredLeads = leads.filter(l => {
+    if (cityFilter     && l.city   !== cityFilter)     return false
+    if (sectorFilter   && l.sector !== sectorFilter)   return false
+    if (priorityFilter && l.priority !== priorityFilter) return false
+    return true
+  })
+  const totalPages = Math.ceil(filteredLeads.length / PER_PAGE)
+  const pagedLeads = filteredLeads.slice((page-1)*PER_PAGE, page*PER_PAGE)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -597,7 +612,7 @@ export default function CRMPage() {
               </button>
             ))}
           </div>
-          <div className="p-3">
+          <div className="p-3 space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"/>
               <input value={search} onChange={e=>setSearch(e.target.value)}
@@ -605,13 +620,49 @@ export default function CRMPage() {
                 className="w-full border border-gray-200 rounded-xl pl-9 pr-9 py-2.5 text-[13px] focus:outline-none focus:border-indigo-300 bg-gray-50/50"/>
               {search&&<button onClick={()=>setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2"><X className="w-3.5 h-3.5 text-gray-400"/></button>}
             </div>
+            {/* Filter row */}
+            <div className="flex flex-wrap gap-2">
+              {crmCities.length > 0 && (
+                <select value={cityFilter} onChange={e=>{setCityFilter(e.target.value);setPage(1)}}
+                  className={`border rounded-xl px-3 py-1.5 text-[12.5px] focus:outline-none bg-white transition-colors ${cityFilter ? 'border-indigo-300 text-indigo-700 bg-indigo-50' : 'border-gray-200 text-gray-500'}`}>
+                  <option value="">Toutes les villes</option>
+                  {crmCities.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+              {crmSectors.length > 0 && (
+                <select value={sectorFilter} onChange={e=>{setSectorFilter(e.target.value);setPage(1)}}
+                  className={`border rounded-xl px-3 py-1.5 text-[12.5px] focus:outline-none bg-white transition-colors max-w-[180px] ${sectorFilter ? 'border-indigo-300 text-indigo-700 bg-indigo-50' : 'border-gray-200 text-gray-500'}`}>
+                  <option value="">Tous les secteurs</option>
+                  {crmSectors.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              )}
+              <select value={priorityFilter} onChange={e=>{setPriorityFilter(e.target.value);setPage(1)}}
+                className={`border rounded-xl px-3 py-1.5 text-[12.5px] focus:outline-none bg-white transition-colors ${priorityFilter ? 'border-indigo-300 text-indigo-700 bg-indigo-50' : 'border-gray-200 text-gray-500'}`}>
+                <option value="">Toutes priorités</option>
+                <option value="urgent">🔴 Urgent</option>
+                <option value="high">🟠 Haute</option>
+                <option value="normal">⚪ Normale</option>
+                <option value="low">🔵 Basse</option>
+              </select>
+              {(cityFilter||sectorFilter||priorityFilter) && (
+                <button onClick={()=>{setCityFilter('');setSectorFilter('');setPriorityFilter('');setPage(1)}}
+                  className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                  <X className="w-3 h-3"/> Réinitialiser
+                </button>
+              )}
+              {filteredLeads.length !== leads.length && (
+                <span className="text-[11.5px] text-indigo-600 font-medium self-center ml-auto">
+                  {filteredLeads.length} / {leads.length} leads
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Pagination info */}
-        {!loading && leads.length > PER_PAGE && (
+        {!loading && filteredLeads.length > PER_PAGE && (
           <div className="flex items-center justify-between mb-3 text-[12.5px] text-gray-400">
-            <span>{leads.length.toLocaleString('fr-FR')} leads · page {page}/{totalPages}</span>
+            <span>{filteredLeads.length.toLocaleString('fr-FR')} leads · page {page}/{totalPages}</span>
             <div className="flex gap-1">
               <button onClick={()=>setPage(1)} disabled={page===1} className="px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-30">«</button>
               <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} className="px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-30">‹</button>
