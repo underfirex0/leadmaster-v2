@@ -68,3 +68,37 @@ export async function PATCH(req: NextRequest, { params }: P) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
+
+// ── Delete a user entirely ────────────────────────────────────
+// Deletes the auth.users row via the Supabase Admin API. The `profiles`
+// table has ON DELETE CASCADE back to auth.users, and every other table
+// (crm_leads, company_unlocks, queries, etc.) cascades from profiles —
+// so this single call cleanly removes 100% of that user's data.
+export async function DELETE(req: NextRequest, { params }: P) {
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user || !(await isAdmin(user.id))) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+
+    if (user.id === params.id) {
+      return NextResponse.json({ error: 'Vous ne pouvez pas supprimer votre propre compte.' }, { status: 400 })
+    }
+
+    // Prevent deleting the last remaining admin — would lock everyone out of this panel
+    const { data: target } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', params.id).single()
+    if (target?.is_admin) {
+      const { count } = await supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('is_admin', true)
+      if ((count ?? 0) <= 1) {
+        return NextResponse.json({ error: 'Impossible de supprimer le dernier compte admin.' }, { status: 400 })
+      }
+    }
+
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(params.id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ success: true, message: 'Utilisateur supprimé' })
+  } catch (e) {
+    console.error('Admin user DELETE error:', e)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
+}
