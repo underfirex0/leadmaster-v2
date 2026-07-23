@@ -4,9 +4,13 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { NomenclatureSector, NomenclatureDomaine, NomenclatureActivite } from '@/types'
 
 // ── Server-side cache (unfiltered full tree only) ─────────────
+// Short TTL — long enough to avoid re-querying on every page load during
+// normal traffic, short enough that newly-added companies (e.g. inserted
+// directly via the Supabase dashboard) show up in Recherche within a minute
+// instead of being invisible for up to 30 minutes.
 let cache: NomenclatureSector[] | null = null
 let cacheTs = 0
-const CACHE_TTL = 1000 * 60 * 30 // 30 min
+const CACHE_TTL = 1000 * 60 // 1 min
 
 // ── Build tree from raw rows ──────────────────────────────────
 type RawRow = { sector: string; domaine: string; activite: string; count: number }
@@ -88,11 +92,12 @@ export async function GET(request: NextRequest) {
     const nameParam   = (searchParams.get('name') ?? '').trim()
     const cities      = citiesParam ? citiesParam.split(',').filter(Boolean) : []
     const isFiltered  = cities.length > 0 || nameParam.length > 0
+    const forceRefresh = searchParams.get('refresh') === '1'
 
     const now = Date.now()
 
     // Use in-memory cache only for the unfiltered full tree
-    if (!isFiltered && cache && (now - cacheTs) < CACHE_TTL) {
+    if (!isFiltered && !forceRefresh && cache && (now - cacheTs) < CACHE_TTL) {
       return NextResponse.json(cache)
     }
 
