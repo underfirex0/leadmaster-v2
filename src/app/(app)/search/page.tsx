@@ -233,6 +233,7 @@ export default function SearchPage() {
   }|null>(null)
   const [toast, setToast] = useState<{msg:string;type:'error'|'success'}|null>(null)
   const debounceRef    = useRef<ReturnType<typeof setTimeout>|null>(null)
+  const estimateReqId  = useRef(0) // guards against a slow, stale response overwriting a newer one
   const nomDebounceRef = useRef<ReturnType<typeof setTimeout>|null>(null)
   const cityRef = useRef<HTMLDivElement>(null)
 
@@ -299,6 +300,7 @@ export default function SearchPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setLiveLoading(true)
     debounceRef.current = setTimeout(async () => {
+      const myReqId = ++estimateReqId.current
       try {
         const r = await fetch('/api/search/estimate',{
           method:'POST', headers:{'Content-Type':'application/json'},
@@ -308,10 +310,15 @@ export default function SearchPage() {
             effectifs: effectifTranches.length>0 ? effectifTranches : undefined }),
         })
         const d = await r.json()
+        // A newer request already started (and possibly resolved) while this
+        // one was in flight — discard this now-stale response.
+        if (myReqId !== estimateReqId.current) return
         setLiveCount(d.count??0)
         setBalance(d.balance)
         setFreeTrialAvail(d.freeTrialEligible??false)
-      } finally { setLiveLoading(false) }
+      } finally {
+        if (myReqId === estimateReqId.current) setLiveLoading(false)
+      }
     }, 600)
   }, [selected, cities, nameSearch, selectedFields, maxCompanies, capitalTranches, effectifTranches])
 
