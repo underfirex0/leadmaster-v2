@@ -59,3 +59,51 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
+
+// ── Create a user directly from the admin panel ──────────────
+// Uses the Supabase Admin API — this bypasses the normal signup/email-
+// confirmation flow entirely. The DB trigger `handle_new_user()` still
+// fires automatically and creates the matching `profiles` row, so no
+// manual profile insert is needed here.
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = createClient()
+    const { data: { user: admin } } = await supabase.auth.getUser()
+    if (!admin || !(await isAdmin(admin.id))) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+
+    const body = await req.json()
+    const { email, password, full_name, plan_id, credit_balance, is_admin: makeAdmin } = body
+
+    if (!email?.trim())    return NextResponse.json({ error: 'E-mail requis' }, { status: 400 })
+    if (!password || password.length < 6) return NextResponse.json({ error: 'Mot de passe : 6 caractères minimum' }, { status: 400 })
+
+    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+      email: email.trim(),
+      password,
+      email_confirm: true, // skip the confirmation e-mail — admin-created accounts are trusted immediately
+      user_metadata: { full_name: full_name?.trim() || null },
+    })
+    if (createErr) {
+      const msg = createErr.message.includes('already been registered')
+        ? 'Cet e-mail est déjà utilisé.'
+        : createErr.message
+      return NextResponse.json({ error: msg }, { status: 400 })
+    }
+
+    const newUserId = created.user.id
+
+    // Apply any additional settings on top of the auto-created profile
+    const updates: Record<string, unknown> = {}
+    if (plan_id)                        updates.plan_id = plan_id
+    if (credit_balance !== undefined)   updates.credit_balance = Number(credit_balance)
+    if (makeAdmin)                      updates.is_admin = true
+    if (Object.keys(updates).length > 0) {
+      await supabaseAdmin.from('profiles').update(updates).eq('id', newUserId)
+    }
+
+    return NextResponse.json({ success: true, id: newUserId, message: 'Utilisateur créé avec succès' }, { status: 201 })
+  } catch (e) {
+    console.error('Admin create user error:', e)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
+}
