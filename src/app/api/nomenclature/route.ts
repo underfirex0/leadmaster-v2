@@ -107,17 +107,34 @@ export async function GET(request: NextRequest) {
       // Query companies table directly — counts are per-filter-set
       rows = await fetchFilteredRows(cities, nameParam)
     } else {
-      // Use RPC (aggregated GROUP BY, fast) for the unfiltered tree
-      const { data, error } = await supabaseAdmin.rpc('get_nomenclature_tree')
-      if (error) throw error
+      // Use RPC (aggregated GROUP BY, fast) for the unfiltered tree.
+      // IMPORTANT: paginate with .range() — PostgREST caps a single RPC
+      // response at 1000 rows by default. With enough distinct sector/
+      // domaine/activité combinations, later-alphabetical sectors (like
+      // "Public, Social & Associations") get silently truncated off the
+      // end of the response if we don't page through everything.
+      rows = []
+      let from = 0
+      const BATCH = 1000
+      while (true) {
+        const { data, error } = await supabaseAdmin
+          .rpc('get_nomenclature_tree')
+          .range(from, from + BATCH - 1)
+        if (error) throw error
+        if (!data?.length) break
 
-      rows = ((data ?? []) as { sector:string; domaine:string; activite:string; company_count:number }[])
-        .map(r => ({
-          sector:   r.sector   ?? '',
-          domaine:  r.domaine  ?? '',
-          activite: r.activite ?? '',
-          count: Number(r.company_count),
-        }))
+        rows.push(...((data as { sector:string; domaine:string; activite:string; company_count:number }[])
+          .map(r => ({
+            sector:   r.sector   ?? '',
+            domaine:  r.domaine  ?? '',
+            activite: r.activite ?? '',
+            count: Number(r.company_count),
+          }))
+        ))
+
+        if (data.length < BATCH) break
+        from += BATCH
+      }
     }
 
     const tree = buildTree(rows)
