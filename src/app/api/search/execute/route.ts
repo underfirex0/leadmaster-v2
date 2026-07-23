@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { FIELD_GROUPS } from '@/lib/constants'
 import type { FieldGroupId } from '@/lib/constants'
+import { fetchMatchingCompanies, type CompanyFilters } from '@/lib/companySearch'
 
 const FIELD_COL = Object.fromEntries(
   Object.entries(FIELD_GROUPS).map(([k,v]) => [k, v.columns])
@@ -38,70 +39,10 @@ function parseCapital(val: unknown): number {
   return isNaN(n) ? NaN : n
 }
 
-async function fetchAllMatching(
-  filters: {
-    sectors: string[], domaines: string[], activites: string[],
-    cities: string[], name: string,
-    capital_min?: string, capital_max?: string,
-    effectif?: string,
-    effectifs?: string[],
-  },
-  targetRows: number
-): Promise<Record<string,unknown>[]> {
-  const BATCH = 1000
-  const all: Record<string,unknown>[] = []
-  // We fetch 2× target to have better candidates for completeness sorting
-  const fetchTarget = Math.min(targetRows * 2, 20000)
-
-  for (let offset = 0; offset < fetchTarget; offset += BATCH) {
-    let q = supabaseAdmin
-      .from('companies')
-      .select('id,name,city,annee_creation,forme_juridique,primary_sector,primary_domaine,' +
-        'primary_activite,activities,phone_1,phone_2,email,website,director,' +
-        'ice,rc,capital,effectif,address_raw,latitude,longitude,facebook,instagram,linkedin,' +
-        'youtube,description,rating,logo_url')
-
-    const { sectors, domaines, activites, cities, name } = filters
-
-    if (sectors.length || domaines.length || activites.length) {
-      const parts: string[] = []
-      if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map(s=>`"${s}"`).join(',')})`)
-      if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map(s=>`"${s}"`).join(',')})`)
-      if (activites.length) parts.push(`primary_activite.in.(${activites.map(s=>`"${s}"`).join(',')})`)
-      q = q.or(parts.join(','))
-    }
-    if (cities.length) q = q.in('city', cities)
-    if (name.trim())   q = q.ilike('name', `%${name.trim()}%`)
-    // Multi-select effectif
-    const allEffectifs = filters.effectifs && filters.effectifs.length > 0
-      ? filters.effectifs : (filters.effectif ? [filters.effectif] : [])
-    if (allEffectifs.length === 1) q = q.eq('effectif', allEffectifs[0])
-    if (allEffectifs.length > 1)  q = q.in('effectif', allEffectifs)
-
-    const { data: batch, error } = await q.range(offset, offset + BATCH - 1).order('name')
-    if (error) { console.error(`Batch ${offset} error:`, error); break }
-    if (!batch?.length) break
-    all.push(...batch)
-    if (batch.length < BATCH) break
-    if (all.length >= fetchTarget) break
-  }
-
-  // In-memory capital filter (capital is TEXT in DB, so numeric comparison must be in-memory)
-  const { capital_min, capital_max } = filters
-  if (capital_min || capital_max) {
-    const min = capital_min ? parseFloat(capital_min) : null
-    const max = capital_max ? parseFloat(capital_max) : null
-    return all.filter(c => {
-      const cap = parseCapital(c.capital)
-      if (isNaN(cap)) return false
-      if (min !== null && cap < min) return false
-      if (max !== null && cap > max) return false
-      return true
-    })
-  }
-
-  return all
-}
+const DATA_COLUMNS = 'id,name,city,annee_creation,forme_juridique,primary_sector,primary_domaine,' +
+  'primary_activite,activities,phone_1,phone_2,email,website,director,' +
+  'ice,rc,capital,effectif,address_raw,latitude,longitude,facebook,instagram,linkedin,' +
+  'youtube,description,rating,logo_url'
 
 export async function POST(request: NextRequest) {
   try {
@@ -122,24 +63,33 @@ export async function POST(request: NextRequest) {
 
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
     const maxCompanies = Math.min(limit, 10000)
+    const allEffectifs: string[] = effectifs?.length > 0 ? effectifs : (effectif ? [effectif] : [])
 
-    // ── Fetch ALL matching companies in batches ──────────────
-    const allRaw = await fetchAllMatching(
-      { sectors, domaines, activites, cities, name,
-        capital_min: capital_min ? String(capital_min) : undefined,
-        capital_max: capital_max ? String(capital_max) : undefined,
-        effectif: effectif || undefined,
-        effectifs: effectifs?.length > 0 ? effectifs : undefined,
-      },
-      maxCompanies
-    )
+    // ── Fetch matching companies — chunked, no URL-length risk regardless
+    // of how many sectors/domaines/activités are selected ──
+    const filters: CompanyFilters = { sectors, domaines, activites, cities, name, effectifs: allEffectifs }
+    // Fetch 2× target to have better candidates for completeness sorting
+    const fetchTarget = Math.min(maxCompanies * 2, 20000)
+    let allRaw = await fetchMatchingCompanies(filters, DATA_COLUMNS, fetchTarget)
+
+    // In-memory capital filter (capital is TEXT in DB, so numeric comparison must be in-memory)
+    if (capital_min || capital_max) {
+      const min = capital_min ? parseFloat(String(capital_min)) : null
+      const max = capital_max ? parseFloat(String(capital_max)) : null
+      allRaw = allRaw.filter(c => {
+        const cap = parseCapital(c.capital)
+        if (isNaN(cap)) return false
+        if (min !== null && cap < min) return false
+        if (max !== null && cap > max) return false
+        return true
+      })
+    }
 
     if (!allRaw.length) return NextResponse.json({ error: 'Aucune entreprise trouvée avec ces critères' }, { status: 404 })
 
     // ── Sort: best global data quality FIRST ────────────────
     // Primary: selected-field completeness (most relevant to user's choice)
     // Secondary: GLOBAL completeness (fewer "Non disponible" shown to user)
-    // This ensures user always sees richest companies first, regardless of what they selected
     allRaw.sort((a, b) => {
       const selA = selectedCompleteness(a, allFields)
       const selB = selectedCompleteness(b, allFields)
@@ -199,7 +149,7 @@ export async function POST(request: NextRequest) {
     const { data: queryRecord, error: qErr } = await supabaseAdmin
       .from('queries').insert({
         user_id:          user.id,
-        filters:          { sectors, domaines, activites, cities, name, capital_min, capital_max, effectif: effectif||undefined },
+        filters:          { sectors, domaines, activites, cities, name, capital_min, capital_max, effectif: effectif||undefined, effectifs: allEffectifs.length>0 ? allEffectifs : undefined },
         fields_requested: allFields,
         result_count:     selected.length,
         credits_spent:    totalCost,
