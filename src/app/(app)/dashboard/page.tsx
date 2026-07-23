@@ -100,6 +100,12 @@ export default async function DashboardPage() {
     },
   ]
 
+  // Round down to the nearest thousand for the "plus de X entreprises" headline —
+  // so it reads "plus de 62 000" rather than an oddly precise "62 070"
+  const roundedCompanies = stats.totalCompanies >= 1000
+    ? `${Math.floor(stats.totalCompanies / 1000).toLocaleString('fr-MA')} 000`
+    : stats.totalCompanies.toLocaleString('fr-MA')
+
   return (
     <div className="min-h-screen bg-surface-1">
       <div className="max-w-[1100px] mx-auto px-4 py-8">
@@ -110,7 +116,7 @@ export default async function DashboardPage() {
             Bonjour, {firstName} 👋
           </h1>
           <p className="text-ink-3 text-[15px]">
-            Votre tableau de bord LeadMaster — prospectez plus de 53 000 entreprises marocaines.
+            Votre tableau de bord LeadMaster — prospectez plus de {roundedCompanies} entreprises marocaines.
           </p>
         </div>
 
