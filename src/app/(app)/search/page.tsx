@@ -313,9 +313,20 @@ export default function SearchPage() {
         // A newer request already started (and possibly resolved) while this
         // one was in flight — discard this now-stale response.
         if (myReqId !== estimateReqId.current) return
-        setLiveCount(d.count??0)
-        setBalance(d.balance)
-        setFreeTrialAvail(d.freeTrialEligible??false)
+        if (!r.ok) {
+          // Request failed server-side (e.g. a required DB function is
+          // missing) — never let undefined slip into state, since that
+          // silently passes `!== null` checks elsewhere and crashes any
+          // .toLocaleString() call downstream. Reset to a safe "no data" state.
+          console.error('Estimate failed:', d?.error)
+          setLiveCount(0)
+          setBalance(prev => typeof prev === 'number' ? prev : null)
+          setFreeTrialAvail(false)
+          return
+        }
+        setLiveCount(typeof d.count === 'number' ? d.count : 0)
+        setBalance(typeof d.balance === 'number' ? d.balance : null)
+        setFreeTrialAvail(d.freeTrialEligible === true)
       } finally {
         if (myReqId === estimateReqId.current) setLiveLoading(false)
       }
