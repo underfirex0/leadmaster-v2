@@ -122,7 +122,9 @@ export async function GET(request: NextRequest) {
       const uf  = lead.company_id ? (unlockMap[lead.company_id]  ?? []) : []
       const avail = computeAvailability(c)
       const cf = (lead.custom_fields as Record<string, unknown>) ?? {}
-      const isPro = !!cf.is_pro
+      // Any lead with no linked company row (CSV import, manual entry, etc.)
+      // keeps its data in custom_fields instead of the companies table.
+      const isImported = !lead.company_id
 
       // Only surface field values the user has paid to unlock
       const phoneVal    = uf.includes('phone')          ? (c?.phone_1 || c?.phone_2 || null)  : null
@@ -141,17 +143,18 @@ export async function GET(request: NextRequest) {
       const display_website = lead.website || websiteVal || null
       const display_director = lead.contact_name || directorVal || null
 
-      // DATA Pro leads have no company_id — all "legal/financial" values live in custom_fields instead
-      const display_ice      = isPro ? ((cf.ice as string) || null)       : iceVal
-      const display_annee    = isPro ? ((cf.annee_creation as string) || null) : anneeVal
-      const display_effectif = isPro ? ((cf.effectif as string) || null)  : effectifVal
-      const display_capital  = isPro ? ((cf.capital as string) || null)   : capitalVal
-      const display_address  = isPro ? ((cf.address_raw as string) || null) : addressVal
+      // Imported leads have no company_id — "legal/financial" values live in custom_fields instead
+      const display_ice      = isImported ? ((cf.ice as string) || null)       : iceVal
+      const display_annee    = isImported ? ((cf.annee_creation as string) || null) : anneeVal
+      const display_effectif = isImported ? ((cf.effectif as string) || null)  : effectifVal
+      const display_capital  = isImported ? ((cf.capital as string) || null)   : capitalVal
+      const display_address  = isImported ? ((cf.address_raw as string) || null) : addressVal
 
-      // Everything dataset-specific (director contacts blocks, financials, ESG, positioning...)
-      // that isn't already shown as a standard field above.
+      // Anything else stored on the lead beyond the standard fields above —
+      // e.g. extra columns mapped during a CSV import that didn't correspond
+      // to a named field. Shown generically in the CRM detail panel.
       const fieldLabels = (cf.field_labels as Record<string, string>) ?? {}
-      const proExtraFields = isPro
+      const extraFields = isImported
         ? Object.entries(cf)
             .filter(([k, v]) => !STD_KEYS.has(k) && v !== null && v !== '' && v !== undefined)
             .map(([k, v]) => ({ key: k, label: fieldLabels[k] ?? k, value: String(v) }))
@@ -174,16 +177,14 @@ export async function GET(request: NextRequest) {
         display_activities: c?.activities ?? null,
         unlocked_fields:  uf,
         field_availability: avail,
-        richness:         richnessScore(uf, avail) + (isPro ? 100 : 0), // Pro leads always float to top
+        richness:         richnessScore(uf, avail),
         refund_status:    (refundMap[lead.id as string] ?? null) as string|null,
-        is_pro:           isPro,
         // Filter-only raw values — NOT masked by unlock status. Filtering by
         // "50-99 employees" doesn't reveal the actual unlocked field value to
         // the user, it only narrows a list they already own in their CRM.
-        _filter_effectif: isPro ? ((cf.effectif as string) || null) : ((c?.effectif as string) || null),
-        _filter_capital:  isPro ? ((cf.capital  as string) || null) : ((c?.capital  as string) || null),
-        pro_dataset_name: isPro ? ((cf.dataset_name as string) ?? 'DATA Pro') : null,
-        pro_extra_fields: proExtraFields,
+        _filter_effectif: isImported ? ((cf.effectif as string) || null) : ((c?.effectif as string) || null),
+        _filter_capital:  isImported ? ((cf.capital  as string) || null) : ((c?.capital  as string) || null),
+        extra_fields: extraFields,
       }
     })
 

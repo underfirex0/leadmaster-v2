@@ -195,7 +195,6 @@ function Hero() {
   const subRef       = useRef<HTMLParagraphElement>(null)
   const ctaRef       = useRef<HTMLDivElement>(null)
   const mockupRef    = useRef<HTMLDivElement>(null)
-  const statsRef     = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -206,14 +205,6 @@ function Hero() {
         .from(subRef.current,    { opacity: 0, y: 28, duration: 0.85 }, 0.35)
         .from(ctaRef.current,    { opacity: 0, y: 22, duration: 0.75 }, 0.55)
         .from(mockupRef.current, { opacity: 0, x: 48, duration: 1.1  }, 0.25)
-      // Counter animations
-      statsRef.current?.querySelectorAll('[data-count]').forEach(el => {
-        const target = parseFloat(el.getAttribute('data-count') || '0')
-        const suffix = el.getAttribute('data-suffix') || ''
-        const obj = { v: 0 }
-        gsap.to(obj, { v: target, duration: 1.8, ease: 'power2.out', delay: 0.8,
-          onUpdate: () => { el.textContent = Math.round(obj.v).toLocaleString('fr-MA') + suffix } })
-      })
     }, containerRef)
     return () => ctx.revert()
   }, [])
@@ -265,21 +256,6 @@ function Hero() {
           <div ref={mockupRef} className="hidden lg:flex items-center justify-end" aria-hidden="true">
             <div className="animate-float"><ProductMockup /></div>
           </div>
-        </div>
-        <div ref={statsRef} className="grid grid-cols-2 sm:grid-cols-4 gap-6 py-8 border-t border-[rgba(0,0,0,0.06)]">
-          {[
-            { count:1,    suffix:'M+',  label:'Données B2B disponibles'      },
-            { count:1000, suffix:'+',   label:'Commerciaux marocains actifs'  },
-            { count:0,    suffix:'cr',  label:'Coût des infos de base (nom, ville, secteur)' },
-            { count:24,   suffix:'h',   label:'Activation du compte après paiement' },
-          ].map(({count,suffix,label})=>(
-            <div key={label} className="text-center sm:text-left">
-              <span className="block text-[30px] sm:text-[34px] font-extrabold text-ink-1 tabular-nums" style={{letterSpacing:'-1.5px',lineHeight:1}} data-count={count} data-suffix={suffix}>
-                {count}{suffix}
-              </span>
-              <p className="text-[12px] text-ink-4 mt-1 leading-snug">{label}</p>
-            </div>
-          ))}
         </div>
       </div>
     </section>

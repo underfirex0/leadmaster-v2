@@ -19,8 +19,8 @@ export async function GET(req: Request) {
     let query = supabaseAdmin
       .from('data_upload_requests')
       .select(`
-        id, file_name, file_path, file_size_bytes, estimated_rows,
-        user_notes, admin_notes, status, created_at, updated_at, processed_at,
+        id, request_type, file_name, file_path, file_size_bytes, estimated_rows,
+        request_description, user_notes, admin_notes, status, created_at, updated_at, processed_at,
         injected_count, injected_at,
         profiles!user_id (id, email, full_name, plan_id)
       `)

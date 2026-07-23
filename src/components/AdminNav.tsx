@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, CreditCard, Database,
-  FileText, BarChart2, LogOut, Target, Shield, Activity, Crown
+  FileText, BarChart2, LogOut, Target, Shield, Activity
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/Logo'
@@ -12,8 +12,7 @@ const NAV = [
   { href: '/admin',                 label: 'Dashboard',        icon: LayoutDashboard, exact: true },
   { href: '/admin/users',           label: 'Utilisateurs',     icon: Users },
   { href: '/admin/subscriptions',   label: 'Abonnements',      icon: CreditCard, badge: 'pending' },
-  { href: '/admin/data-requests',   label: 'Imports CSV',      icon: FileText,  badge: 'imports' },
-  { href: '/admin/data-pro',        label: 'DATA Pro',         icon: Crown },
+  { href: '/admin/data-requests',   label: 'Demandes de données', icon: FileText,  badge: 'imports' },
   { href: '/admin/feature-access',  label: 'Accès features',   icon: Shield },
   { href: '/admin/invoices',        label: 'Factures',         icon: FileText },
   { href: '/admin/data',            label: 'Base de données',  icon: Database },

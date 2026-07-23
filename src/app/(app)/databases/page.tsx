@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { Search, Clock, Download, Eye, Trash2, Loader2, Database, ArrowRight, Filter, Crown, X } from 'lucide-react'
+import { Search, Clock, Download, Eye, Trash2, Loader2, Database, ArrowRight, Filter, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type Query = {
@@ -12,11 +12,6 @@ type Query = {
   credits_spent: number
   query_name: string | null
   created_at: string
-}
-
-type ProDataset = {
-  id: string; name: string; sector_tag: string | null; record_count: number
-  cover_emoji: string | null; credit_cost: number; is_unlocked: boolean
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -30,16 +25,12 @@ function fmt(d: string) {
 
 export default function DatabasesPage() {
   const [queries, setQueries]   = useState<Query[]>([])
-  const [proDatasets, setProDatasets] = useState<ProDataset[]>([])
   const [loading, setLoading]   = useState(true)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [toast, setToast]       = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/searches').then(r => r.json()).then(d => { setQueries(d.queries ?? []); setLoading(false) })
-    fetch('/api/data-pro').then(r => r.json()).then(d => {
-      setProDatasets((d.datasets ?? []).filter((ds: ProDataset) => ds.is_unlocked))
-    }).catch(() => {})
   }, [])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 3000) }
@@ -131,32 +122,6 @@ export default function DatabasesPage() {
                 </div>
               )
             })}
-          </div>
-        )}
-
-        {/* DATA Pro purchased datasets */}
-        {proDatasets.length > 0 && (
-          <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Crown className="w-4 h-4 text-amber-500" />
-              <h2 className="text-[15px] font-bold text-gray-800">Mes datasets Pro</h2>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {proDatasets.map(ds => (
-                <Link key={ds.id} href={`/data-pro/${ds.id}`}
-                  className="flex items-center gap-3 bg-gradient-to-br from-white to-amber-50/50 border border-amber-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
-                  <div className="text-[24px]">{ds.cover_emoji || '💎'}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-[14px] text-gray-900 truncate">{ds.name}</span>
-                      <span className="text-[9px] font-bold text-amber-700 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-0.5 shrink-0">PRO</span>
-                    </div>
-                    <div className="text-[12px] text-gray-400">{ds.record_count.toLocaleString('fr-FR')} entreprises{ds.sector_tag ? ` · ${ds.sector_tag}` : ''}</div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-amber-400 shrink-0" />
-                </Link>
-              ))}
-            </div>
           </div>
         )}
 

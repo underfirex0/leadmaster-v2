@@ -4,7 +4,7 @@ import {
   Phone, Mail, Globe, User, MapPin, ChevronDown, ChevronUp,
   Search, Loader2, Trash2, RefreshCw, X, Users2, ArrowRight,
   Lock, Building2, Calendar, DollarSign, Star, TrendingUp,
-  MessageSquare, Check, AlertTriangle, RefreshCcw, Crown, Sparkles
+  MessageSquare, Check, AlertTriangle, RefreshCcw, FileText
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -35,9 +35,7 @@ type Lead = {
   field_availability:Record<string,boolean>
   richness:number
   refund_status?: 'pending'|'approved'|'rejected'|null
-  is_pro?: boolean
-  pro_dataset_name?: string | null
-  pro_extra_fields?: { key:string; label:string; value:string }[]
+  extra_fields?: { key:string; label:string; value:string }[]
   _filter_effectif?: string | null
   _filter_capital?: string | null
 }
@@ -285,6 +283,118 @@ function SignalerModal({ lead, onClose, onSuccess }: {
   )
 }
 
+// ── Callback Modal — date + note, shown the instant "À rappeler" is chosen ──
+function CallbackModal({ lead, onClose, onSuccess }: {
+  lead: Lead
+  onClose: () => void
+  onSuccess: (leadId: string, data: Record<string, unknown>) => void
+}) {
+  // Default to tomorrow 09:00 so the field is never blank on open
+  const defaultDate = (() => {
+    const d = lead.callback_date ? new Date(lead.callback_date) : new Date(Date.now() + 24*60*60*1000)
+    if (!lead.callback_date) d.setHours(9, 0, 0, 0)
+    const pad = (n:number) => String(n).padStart(2,'0')
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })()
+
+  const [date, setDate]       = useState(defaultDate)
+  const [note, setNote]       = useState(lead.notes ?? '')
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState<string|null>(null)
+
+  // Quick-pick shortcuts — the most common callback delays
+  const quickPicks = [
+    { label: 'Demain 9h',      hours: 24 },
+    { label: 'Dans 3 jours',   hours: 72 },
+    { label: 'Dans 1 semaine', hours: 168 },
+  ]
+  function applyQuickPick(hours: number) {
+    const d = new Date(Date.now() + hours*60*60*1000)
+    if (hours === 24) d.setHours(9, 0, 0, 0)
+    const pad = (n:number) => String(n).padStart(2,'0')
+    setDate(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`)
+  }
+
+  async function handleSubmit() {
+    if (!date) { setError('Choisissez une date de rappel'); return }
+    setLoading(true); setError(null)
+    const r = await fetch(`/api/crm/leads/${lead.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'callback', callback_date: date, notes: note }),
+    })
+    if (!r.ok) { const d = await r.json().catch(()=>({})); setError(d.error || 'Erreur'); setLoading(false); return }
+    onSuccess(lead.id, { status: 'callback', callback_date: date, notes: note })
+    setLoading(false)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div>
+            <h2 className="font-bold text-[16px] text-gray-900 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-orange-500" /> Planifier un rappel
+            </h2>
+            <p className="text-[12.5px] text-gray-400 mt-0.5">{lead.display_name}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+            <X className="w-4 h-4 text-gray-400"/>
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Quick picks */}
+          <div>
+            <label className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-2 block">Rappel rapide</label>
+            <div className="grid grid-cols-3 gap-2">
+              {quickPicks.map(q => (
+                <button key={q.label} onClick={() => applyQuickPick(q.hours)}
+                  className="text-[12px] font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl py-2 hover:bg-orange-100 transition-colors">
+                  {q.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Date/time picker */}
+          <div>
+            <label className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Date et heure du rappel</label>
+            <input
+              type="datetime-local"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-700 focus:outline-none focus:border-orange-300 bg-white"
+            />
+          </div>
+
+          {/* Note */}
+          <div>
+            <label className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Note (optionnel)</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)}
+              placeholder="Contexte pour le prochain appel..."
+              rows={3}
+              className="w-full border border-gray-200 rounded-xl p-3 text-[13px] text-gray-700 resize-none focus:outline-none focus:border-orange-300 placeholder-gray-300"/>
+          </div>
+
+          {error && <p className="text-[12.5px] text-red-500 font-medium">{error}</p>}
+        </div>
+
+        <div className="flex gap-2 p-5 pt-0">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[13px] font-medium text-gray-600 hover:bg-gray-50">
+            Annuler
+          </button>
+          <button onClick={handleSubmit} disabled={loading || !date}
+            className="flex-1 py-2.5 rounded-xl bg-orange-600 text-white text-[13px] font-bold hover:bg-orange-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Calendar className="w-4 h-4"/>}
+            Planifier le rappel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Lead Card ─────────────────────────────────────────────────
 function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
   lead:Lead; onUpdate:(id:string,d:Record<string,unknown>)=>void
@@ -294,11 +404,15 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
   const [saving,     setSaving]     = useState(false)
   const [notes,      setNotes]      = useState(lead.notes ?? '')
   const [showSignal, setShowSignal] = useState(false)
+  const [showCallback, setShowCallback] = useState(false)
   const cfg   = STATUS_CFG[lead.status]
   const avail = totalAvailable(lead)
   const unlkd = totalUnlocked(lead)
 
   async function updateStatus(status:Status) {
+    // "À rappeler" needs a date — open the popup instead of silently
+    // switching status with no callback_date set
+    if (status === 'callback') { setShowCallback(true); return }
     setSaving(true)
     await fetch(`/api/crm/leads/${lead.id}`,{ method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status}) })
     onUpdate(lead.id,{status})
@@ -331,11 +445,6 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
               <div className="min-w-0">
                 <h3 className="font-bold text-[14.5px] text-gray-900 leading-tight truncate">{lead.display_name}</h3>
                 <div className="flex items-center gap-2 text-[11.5px] text-gray-400 flex-wrap mt-0.5">
-                  {lead.is_pro && (
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
-                      <Crown className="w-2.5 h-2.5" />PRO
-                    </span>
-                  )}
                   {lead.display_city   && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3"/>{lead.display_city}</span>}
                   {lead.display_sector && <><span className="text-gray-200">·</span><span className="truncate max-w-[140px]">{lead.display_sector}</span></>}
                   <span className="text-gray-200">·</span>
@@ -403,11 +512,7 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
               )}
               <button onClick={() => setExpanded(!expanded)}
                 className="ml-auto flex items-center gap-1 text-[12px] text-gray-400 hover:text-gray-600 transition-colors">
-                {lead.is_pro && (lead.pro_extra_fields?.length ?? 0) > 0 ? (
-                  <><Sparkles className="w-3.5 h-3.5 text-amber-500" /><span className="text-amber-600 font-medium">Fiche complète ({lead.pro_extra_fields!.length})</span></>
-                ) : (
-                  <><MessageSquare className="w-3.5 h-3.5" />Notes</>
-                )}
+                <MessageSquare className="w-3.5 h-3.5" />Notes
                 {expanded ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3"/>}
               </button>
             </div>
@@ -423,16 +528,24 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
         />
       )}
 
+      {showCallback && (
+        <CallbackModal
+          lead={lead}
+          onClose={() => setShowCallback(false)}
+          onSuccess={(leadId, data) => { onUpdate(leadId, data); setNotes((data.notes as string) ?? notes) }}
+        />
+      )}
+
       {/* Notes panel */}
       {expanded && (
         <div className="border-t border-gray-100 p-4 bg-gray-50/60 space-y-3">
-          {lead.is_pro && (lead.pro_extra_fields?.length ?? 0) > 0 && (
-            <div className="bg-white rounded-xl border border-amber-100 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 uppercase tracking-wide mb-2.5">
-                <Crown className="w-3 h-3" />{lead.pro_dataset_name || 'DATA Pro'}
+          {(lead.extra_fields?.length ?? 0) > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-3.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2.5">
+                <FileText className="w-3 h-3" />Champs supplémentaires
               </div>
               <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2.5">
-                {lead.pro_extra_fields!.map(f => (
+                {lead.extra_fields!.map(f => (
                   <div key={f.key} className="min-w-0">
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{f.label}</div>
                     <div className="text-[12.5px] text-gray-700 whitespace-pre-line break-words">{f.value}</div>
@@ -447,14 +560,19 @@ function LeadCard({ lead, onUpdate, onDelete, onUnlock }: {
             className="w-full border border-gray-200 rounded-xl p-3 text-[13px] text-gray-700 resize-none focus:outline-none focus:border-indigo-300 bg-white placeholder-gray-300"
           />
           {lead.status === 'callback' && (
-            <div>
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 block">Date de rappel</label>
-              <input type="datetime-local" defaultValue={lead.callback_date?.slice(0,16) ?? ''}
-                onChange={async e => {
-                  await fetch(`/api/crm/leads/${lead.id}`,{ method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({callback_date:e.target.value}) })
-                  onUpdate(lead.id,{callback_date:e.target.value})
-                }}
-                className="border border-gray-200 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-indigo-300 bg-white"/>
+            <div className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded-xl p-3">
+              <div>
+                <p className="text-[11px] font-bold text-orange-500 uppercase tracking-wide mb-0.5">Rappel planifié</p>
+                <p className="text-[13px] font-semibold text-orange-800">
+                  {lead.callback_date
+                    ? new Date(lead.callback_date).toLocaleString('fr-FR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
+                    : 'Aucune date'}
+                </p>
+              </div>
+              <button onClick={() => setShowCallback(true)}
+                className="flex items-center gap-1.5 text-[12px] font-semibold text-orange-700 bg-white border border-orange-200 rounded-lg px-3 py-1.5 hover:bg-orange-100 transition-colors">
+                <Calendar className="w-3.5 h-3.5" /> Modifier
+              </button>
             </div>
           )}
         </div>

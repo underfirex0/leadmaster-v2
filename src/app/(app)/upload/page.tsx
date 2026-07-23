@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import * as XLSX from 'xlsx'
-import { Upload, FileText, X, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { Upload, FileText, X, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -11,7 +11,9 @@ import { fr } from 'date-fns/locale'
 interface ParsedRow { [key: string]: string }
 interface UploadRequest {
   id: string
-  file_name: string
+  request_type: 'file_upload' | 'custom_request'
+  file_name: string | null
+  request_description: string | null
   estimated_rows: number | null
   status: string
   user_notes: string | null
@@ -60,6 +62,9 @@ export default function UploadPage() {
   const supabase = createClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Which request mode is active
+  const [mode, setMode] = useState<'file' | 'custom'>('file')
+
   // Upload state
   const [dragging, setDragging]       = useState(false)
   const [file, setFile]               = useState<File | null>(null)
@@ -68,6 +73,12 @@ export default function UploadPage() {
   const [uploading, setUploading]     = useState(false)
   const [submitted, setSubmitted]     = useState(false)
   const [error, setError]             = useState<string | null>(null)
+
+  // Custom (no-file) data request state
+  const [customDescription, setCustomDescription] = useState('')
+  const [customSubmitting, setCustomSubmitting]    = useState(false)
+  const [customSubmitted, setCustomSubmitted]      = useState(false)
+  const [customError, setCustomError]              = useState<string | null>(null)
 
   // History state
   const [requests, setRequests]       = useState<UploadRequest[] | null>(null)
@@ -83,7 +94,7 @@ export default function UploadPage() {
     setLoadingHistory(true)
     const { data } = await supabase
       .from('data_upload_requests')
-      .select('id, file_name, estimated_rows, status, user_notes, admin_notes, created_at')
+      .select('id, request_type, file_name, request_description, estimated_rows, status, user_notes, admin_notes, created_at')
       .order('created_at', { ascending: false })
       .limit(20)
     setRequests(data ?? [])
@@ -147,6 +158,7 @@ export default function UploadPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          request_type:   'file_upload',
           file_name:      file.name,
           file_path:      filePath,
           file_size_bytes: file.size,
@@ -166,6 +178,35 @@ export default function UploadPage() {
     }
   }
 
+  async function submitCustomRequest() {
+    if (!customDescription.trim()) { setCustomError('Merci de décrire les données que vous recherchez.'); return }
+    setCustomSubmitting(true)
+    setCustomError(null)
+    try {
+      const res = await fetch('/api/upload/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          request_type:        'custom_request',
+          request_description: customDescription.trim(),
+        }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Erreur serveur') }
+
+      setCustomSubmitted(true)
+      setCustomDescription('')
+      await loadHistory()
+    } catch (err: unknown) {
+      setCustomError(err instanceof Error ? err.message : 'Une erreur est survenue')
+    } finally {
+      setCustomSubmitting(false)
+    }
+  }
+
+  function resetCustom() {
+    setCustomDescription(''); setCustomError(null); setCustomSubmitted(false)
+  }
+
   function reset() {
     setFile(null); setPreview(null); setNotes(''); setError(null); setSubmitted(false)
   }
@@ -176,14 +217,82 @@ export default function UploadPage() {
       {/* Header */}
       <div>
         <h1 className="text-[26px] font-extrabold text-ink-1 mb-1" style={{ letterSpacing: '-0.8px' }}>
-          Importer mes données CRM
+          {mode === 'file' ? 'Importer mes données CRM' : 'Demander des données spécifiques'}
         </h1>
         <p className="text-[14px] text-ink-3 leading-relaxed">
-          Uploadez votre fichier CSV ou Excel. Notre équipe le traitera, mappera vos colonnes et injectera les données directement dans votre CRM sous 24–48h.
+          {mode === 'file'
+            ? "Uploadez votre fichier CSV ou Excel. Notre équipe le traitera, mappera vos colonnes et injectera les données directement dans votre CRM sous 24–48h."
+            : "Vous cherchez des entreprises précises que notre base ne couvre pas encore (secteur de niche, ville spécifique, critère particulier) ? Décrivez votre besoin — notre équipe recherche et prépare les données pour vous."}
         </p>
       </div>
 
+      {/* Mode toggle */}
+      <div className="inline-flex items-center gap-1 bg-surface-2 rounded-xl p-1">
+        <button onClick={() => setMode('file')}
+          className={cn('px-4 py-2 rounded-lg text-[13px] font-semibold transition-colors',
+            mode === 'file' ? 'bg-white text-ink-1 shadow-xs' : 'text-ink-3 hover:text-ink-1')}>
+          Importer un fichier
+        </button>
+        <button onClick={() => setMode('custom')}
+          className={cn('px-4 py-2 rounded-lg text-[13px] font-semibold transition-colors',
+            mode === 'custom' ? 'bg-white text-ink-1 shadow-xs' : 'text-ink-3 hover:text-ink-1')}>
+          Demander des données sur mesure
+        </button>
+      </div>
+
+      {/* Custom data request panel */}
+      {mode === 'custom' && (
+        <div className="bg-white rounded-2xl border border-[rgba(0,0,0,0.07)] overflow-hidden shadow-xs">
+          {customSubmitted ? (
+            <div className="p-10 text-center">
+              <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+              </div>
+              <h2 className="text-[20px] font-bold text-ink-1 mb-2">Demande envoyée ✓</h2>
+              <p className="text-[14px] text-ink-3 mb-6 max-w-[420px] mx-auto">
+                Notre équipe va étudier votre demande et revient vers vous sous <strong>48–72h</strong> avec une proposition ou les données directement injectées dans votre CRM.
+              </p>
+              <button onClick={resetCustom} className="btn-brand btn-md">Faire une autre demande</button>
+            </div>
+          ) : (
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block text-[12px] font-semibold text-ink-2 mb-2">
+                  Décrivez les données que vous recherchez
+                </label>
+                <textarea
+                  value={customDescription}
+                  onChange={e => setCustomDescription(e.target.value)}
+                  rows={6}
+                  placeholder={`Exemple :\nJ'ai besoin des fabricants de meubles en bois basés à Casablanca et Rabat, effectif 20+ employés, avec contact du dirigeant si possible. Environ 50 entreprises souhaitées.`}
+                  className="w-full border border-[rgba(0,0,0,0.1)] rounded-xl px-4 py-3 text-[13px] text-ink-2 resize-none focus:outline-none focus:ring-2 focus:ring-brand-300 focus:border-brand-400 placeholder:text-ink-5 transition-all"
+                />
+                <p className="text-[11px] text-ink-4 mt-1.5">Plus vous êtes précis (secteur, ville, taille, type de contact), plus vite notre équipe peut préparer votre demande.</p>
+              </div>
+
+              {customError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-lg text-[13px] text-red-700">
+                  <AlertCircle className="w-4 h-4 shrink-0" />{customError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-[12px] text-ink-4">Réponse ou données prêtes sous 48–72h.</p>
+                <button onClick={submitCustomRequest} disabled={customSubmitting}
+                  className="btn-brand btn-md min-w-[160px] justify-center">
+                  {customSubmitting
+                    ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Envoi en cours…</>
+                    : 'Envoyer la demande'
+                  }
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Upload card */}
+      {mode === 'file' && (
       <div className="bg-white rounded-2xl border border-[rgba(0,0,0,0.07)] overflow-hidden shadow-xs">
 
         {/* Success state */}
@@ -314,14 +423,19 @@ export default function UploadPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* How it works */}
       <div className="grid sm:grid-cols-3 gap-4">
-        {[
+        {(mode === 'file' ? [
           { n:'1', title:'Uploadez votre fichier',    body:'CSV ou Excel. Décrivez vos colonnes si les noms sont différents des nôtres.' },
           { n:'2', title:'On traite votre demande',  body:'Notre équipe mappe vos colonnes manuellement et vérifie la qualité des données sous 24–48h.' },
           { n:'3', title:'Vos données dans le CRM',  body:'Les leads apparaissent directement dans votre pipeline CRM, prêts à être traités.' },
-        ].map(({ n, title, body }) => (
+        ] : [
+          { n:'1', title:'Décrivez votre besoin',     body:'Secteur, ville, taille d\'entreprise, type de contact recherché — soyez aussi précis que possible.' },
+          { n:'2', title:'Notre équipe recherche',    body:'Nous identifions et vérifions les entreprises correspondant à votre demande sous 48–72h.' },
+          { n:'3', title:'Données prêtes dans le CRM',body:'Une fois validées, les entreprises trouvées apparaissent directement dans votre pipeline CRM.' },
+        ]).map(({ n, title, body }) => (
           <div key={n} className="bg-white rounded-xl border border-[rgba(0,0,0,0.07)] p-5">
             <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center mb-3">
               <span className="text-[12px] font-bold text-white">{n}</span>
@@ -348,6 +462,7 @@ export default function UploadPage() {
               const cfg = STATUS_CONFIG[req.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending
               const Icon = cfg.icon
               const isExpanded = expandedId === req.id
+              const isCustom = req.request_type === 'custom_request'
               return (
                 <div key={req.id} className="bg-white rounded-xl border border-[rgba(0,0,0,0.07)] overflow-hidden">
                   <button
@@ -355,13 +470,16 @@ export default function UploadPage() {
                     className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-surface-1 transition-colors"
                   >
                     <div className="w-8 h-8 bg-surface-2 rounded-lg flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4 text-ink-4" />
+                      {isCustom ? <Search className="w-4 h-4 text-ink-4" /> : <FileText className="w-4 h-4 text-ink-4" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold text-ink-1 truncate">{req.file_name}</p>
+                      <p className="text-[13px] font-semibold text-ink-1 truncate">
+                        {isCustom ? (req.request_description?.slice(0, 60) + (((req.request_description?.length) ?? 0) > 60 ? '…' : '')) : req.file_name}
+                      </p>
                       <p className="text-[11px] text-ink-4 mt-0.5">
                         {format(new Date(req.created_at), "d MMM yyyy 'à' HH:mm", { locale: fr })}
-                        {req.estimated_rows && ` · ${req.estimated_rows.toLocaleString('fr-MA')} lignes`}
+                        {!isCustom && req.estimated_rows && ` · ${req.estimated_rows.toLocaleString('fr-MA')} lignes`}
+                        {isCustom && ' · Demande sur mesure'}
                       </p>
                     </div>
                     <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pill border text-[11px] font-semibold', cfg.color)}>
@@ -372,6 +490,12 @@ export default function UploadPage() {
 
                   {isExpanded && (
                     <div className="px-5 pb-4 border-t border-[rgba(0,0,0,0.05)] pt-3 space-y-3">
+                      {isCustom && req.request_description && (
+                        <div>
+                          <p className="text-[10px] font-bold text-ink-4 uppercase tracking-wide mb-1">Votre demande</p>
+                          <p className="text-[13px] text-ink-2 whitespace-pre-wrap">{req.request_description}</p>
+                        </div>
+                      )}
                       {req.user_notes && (
                         <div>
                           <p className="text-[10px] font-bold text-ink-4 uppercase tracking-wide mb-1">Vos notes</p>

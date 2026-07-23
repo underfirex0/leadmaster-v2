@@ -2,16 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Download, CheckCircle2, XCircle, Loader2, RefreshCw, Clock, FileText, ChevronDown, ChevronUp, User, MessageSquare, AlertCircle, Sparkles } from 'lucide-react'
+import { Download, CheckCircle2, XCircle, Loader2, RefreshCw, Clock, FileText, ChevronDown, ChevronUp, User, MessageSquare, AlertCircle, Sparkles, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
 interface Request {
   id: string
-  file_name: string
+  request_type: 'file_upload' | 'custom_request'
+  file_name: string | null
   file_size_bytes: number | null
   estimated_rows: number | null
+  request_description: string | null
   user_notes: string | null
   admin_notes: string | null
   status: string
@@ -143,6 +145,7 @@ export default function AdminDataRequestsPage() {
             const isExpanded = expandedId === req.id
             const plan = PLAN_LABELS[req.profiles?.plan_id ?? ''] ?? '—'
             const initNotes = adminNotesDraft[req.id] ?? req.admin_notes ?? ''
+            const isCustom = req.request_type === 'custom_request'
 
             return (
               <div key={req.id} className="bg-white rounded-2xl border border-[rgba(0,0,0,0.07)] overflow-hidden">
@@ -150,12 +153,19 @@ export default function AdminDataRequestsPage() {
                 <button onClick={() => setExpandedId(isExpanded ? null : req.id)}
                   className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-surface-1 transition-colors">
                   <div className="w-9 h-9 bg-surface-2 rounded-xl flex items-center justify-center shrink-0">
-                    <FileText className="w-4 h-4 text-ink-4" />
+                    {isCustom ? <Search className="w-4 h-4 text-ink-4" /> : <FileText className="w-4 h-4 text-ink-4" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-[13px] font-semibold text-ink-1 truncate">{req.file_name}</p>
-                      {req.estimated_rows && <span className="text-[10px] text-ink-4 shrink-0">{req.estimated_rows.toLocaleString('fr-MA')} lignes</span>}
+                      <p className="text-[13px] font-semibold text-ink-1 truncate">
+                        {isCustom
+                          ? (req.request_description?.slice(0, 70) + (((req.request_description?.length) ?? 0) > 70 ? '…' : ''))
+                          : req.file_name}
+                      </p>
+                      {!isCustom && req.estimated_rows && <span className="text-[10px] text-ink-4 shrink-0">{req.estimated_rows.toLocaleString('fr-MA')} lignes</span>}
+                      {isCustom && (
+                        <span className="text-[9px] font-bold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-100 rounded-pill px-2 py-0.5 shrink-0">Sur mesure</span>
+                      )}
                       {req.injected_count != null && (
                         <span className="text-[10px] font-semibold text-emerald-600 shrink-0">· {req.injected_count.toLocaleString('fr-MA')} injecté(s)</span>
                       )}
@@ -178,6 +188,12 @@ export default function AdminDataRequestsPage() {
                 {/* Expanded detail */}
                 {isExpanded && (
                   <div className="px-5 pb-5 border-t border-[rgba(0,0,0,0.05)] pt-4 space-y-4">
+                    {isCustom && req.request_description && (
+                      <div className="bg-violet-50 border border-violet-100 rounded-xl p-4">
+                        <p className="text-[10px] font-bold text-violet-700 uppercase tracking-wide mb-2">Demande du client</p>
+                        <p className="text-[13px] text-violet-900 whitespace-pre-wrap leading-relaxed">{req.request_description}</p>
+                      </div>
+                    )}
                     <div className="grid sm:grid-cols-2 gap-4">
                       {/* User info */}
                       <div className="bg-surface-1 rounded-xl p-4 space-y-2">
@@ -223,19 +239,30 @@ export default function AdminDataRequestsPage() {
 
                     {/* Actions */}
                     <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[rgba(0,0,0,0.05)]">
-                      {/* Primary action: column-map and inject into the client's CRM */}
-                      <Link href={`/admin/data-requests/${req.id}/inject`}
-                        className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-[13px] font-semibold rounded-lg hover:bg-brand-700 transition-colors shadow-sm">
-                        <Sparkles className="w-4 h-4" />
-                        {req.status === 'completed' ? 'Voir / Ré-injecter' : 'Mapper & Injecter'}
-                      </Link>
+                      {!isCustom && (
+                        <>
+                          {/* Primary action: column-map and inject into the client's CRM */}
+                          <Link href={`/admin/data-requests/${req.id}/inject`}
+                            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-[13px] font-semibold rounded-lg hover:bg-brand-700 transition-colors shadow-sm">
+                            <Sparkles className="w-4 h-4" />
+                            {req.status === 'completed' ? 'Voir / Ré-injecter' : 'Mapper & Injecter'}
+                          </Link>
 
-                      {/* Download */}
-                      <button onClick={() => downloadFile(req.id, req.file_name)} disabled={downloading[req.id]}
-                        className="flex items-center gap-2 px-4 py-2 bg-ink-1 text-white text-[13px] font-semibold rounded-lg hover:bg-ink-2 transition-colors disabled:opacity-60">
-                        {downloading[req.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                        Télécharger le fichier
-                      </button>
+                          {/* Download */}
+                          <button onClick={() => downloadFile(req.id, req.file_name ?? 'fichier')} disabled={downloading[req.id]}
+                            className="flex items-center gap-2 px-4 py-2 bg-ink-1 text-white text-[13px] font-semibold rounded-lg hover:bg-ink-2 transition-colors disabled:opacity-60">
+                            {downloading[req.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                            Télécharger le fichier
+                          </button>
+                        </>
+                      )}
+                      {isCustom && (req.status === 'pending' || req.status === 'processing') && (
+                        <Link href="/admin/data"
+                          className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-[13px] font-semibold rounded-lg hover:bg-brand-700 transition-colors shadow-sm">
+                          <Search className="w-4 h-4" />
+                          Rechercher dans la base
+                        </Link>
+                      )}
 
                       {/* Status changes */}
                       {req.status === 'pending' && (

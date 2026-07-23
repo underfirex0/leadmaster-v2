@@ -70,11 +70,6 @@ export default function Navbar({ profile, blockedFeatures = [] }: NavbarProps) {
                 </Link>
               )
             })}
-            <Link href="/data-pro"
-              className={cn('flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all',
-                isActive('/data-pro') ? 'bg-amber-50 text-amber-700' : 'text-amber-600 hover:bg-amber-50')}>
-              <Crown className="w-3.5 h-3.5" /> DATA Pro
-            </Link>
             <Link href="/meetmaster"
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium text-amber-600 hover:bg-amber-50 transition-all">
               <Crown className="w-3.5 h-3.5" /> MeetMaster
@@ -152,11 +147,6 @@ export default function Navbar({ profile, blockedFeatures = [] }: NavbarProps) {
                   <Icon className="w-4 h-4" />{l.label}
                 </Link>
               )})}
-              <Link href="/data-pro"
-                className={cn('flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] font-medium',
-                  isActive('/data-pro') ? 'bg-amber-50 text-amber-700' : 'text-amber-600 hover:bg-amber-50')}>
-                <Crown className="w-4 h-4" /> DATA Pro
-              </Link>
               <Link href="/meetmaster" className="flex items-center gap-3 px-3 py-3 rounded-xl text-[14px] font-medium text-amber-600 hover:bg-amber-50">
                 <Crown className="w-4 h-4" /> MeetMaster <span className="text-[10px] bg-amber-50 border border-amber-200 rounded-full px-1.5 ml-auto">Bientôt</span>
               </Link>
