@@ -8,8 +8,25 @@ import {
   Share2, DollarSign, Calendar, FileText, Check, CheckSquare, Square
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { FIELD_GROUPS } from '@/lib/constants'
+import { FIELD_GROUPS, EFFECTIF_TRANCHES } from '@/lib/constants'
 import type { FieldGroupId } from '@/lib/constants'
+
+// Capital tranches — same buckets used across Recherche and CRM
+const CAPITAL_TRANCHES: { val: string; label: string; min: number; max: number | null }[] = [
+  { val:'0-100000',          label:'Moins de 100 000 MAD', min:0,        max:100000 },
+  { val:'100000-500000',      label:'100 000 — 500 000 MAD', min:100000,  max:500000 },
+  { val:'500000-1000000',     label:'500 000 — 1M MAD',      min:500000,  max:1000000 },
+  { val:'1000000-5000000',    label:'1M — 5M MAD',           min:1000000, max:5000000 },
+  { val:'5000000-10000000',   label:'5M — 10M MAD',          min:5000000, max:10000000 },
+  { val:'10000000-50000000',  label:'10M — 50M MAD',         min:10000000,max:50000000 },
+  { val:'50000000-',          label:'Plus de 50M MAD',       min:50000000,max:null },
+]
+
+function parseCapitalValue(val: unknown): number {
+  if (!val) return NaN
+  const n = parseFloat(String(val).replace(/[^0-9.,]/g, '').replace(',', '.').replace(/\s/g, ''))
+  return isNaN(n) ? NaN : n
+}
 
 type Company = Record<string, unknown> & {
   id: string; name: string; city: string|null; unlocked_fields?: string[]
@@ -237,6 +254,13 @@ export default function DatabaseDetailPage() {
   const [bulkInj, setBulkInj]   = useState(false)
   const [toast, setToast]       = useState<{msg:string;type:'success'|'error'}|null>(null)
 
+  // Filters
+  const [cityFilter,      setCityFilter]      = useState('')
+  const [sectorFilter,    setSectorFilter]     = useState('')
+  const [effectifFilters, setEffectifFilters]  = useState<string[]>([])
+  const [capitalFilters,  setCapitalFilters]   = useState<string[]>([])
+  const [filtersOpen,     setFiltersOpen]      = useState(false)
+
   function showToast(msg:string, type:'success'|'error'='success') {
     setToast({msg,type}); setTimeout(()=>setToast(null), 4000)
   }
@@ -294,9 +318,9 @@ export default function DatabaseDetailPage() {
   }
 
   async function handleInjectAll() {
-    if (!data?.companies.length) return
+    if (!filteredCompanies.length) return
     setInjecting(true)
-    await injectCompanies(data.companies.map(c => c.id))
+    await injectCompanies(filteredCompanies.map(c => c.id))
     setInjecting(false)
   }
 
@@ -315,9 +339,32 @@ export default function DatabaseDetailPage() {
   }
 
   const { query, companies, fields } = data ?? { query: {}, companies: [], fields: [] }
-  const totalPages = Math.ceil(companies.length / PER_PAGE)
-  const pagedCompanies = companies.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE)
-  const allSelected = selected.size === companies.length && companies.length > 0
+
+  // Available filter options, derived from this search's own results
+  const availableCities  = [...new Set(companies.map(c => c.city as string).filter(Boolean))].sort()
+  const availableSectors = [...new Set(companies.map(c => c.primary_sector as string).filter(Boolean))].sort()
+
+  const filteredCompanies = companies.filter(c => {
+    if (cityFilter   && c.city !== cityFilter) return false
+    if (sectorFilter && c.primary_sector !== sectorFilter) return false
+    if (effectifFilters.length > 0 && !effectifFilters.includes((c.effectif as string) ?? '')) return false
+    if (capitalFilters.length > 0) {
+      const cap = parseCapitalValue(c.capital)
+      if (isNaN(cap)) return false
+      const inAnyTranche = capitalFilters.some(fval => {
+        const t = CAPITAL_TRANCHES.find(ct => ct.val === fval)
+        if (!t) return false
+        return cap >= t.min && (t.max === null || cap < t.max)
+      })
+      if (!inAnyTranche) return false
+    }
+    return true
+  })
+  const hasActiveFilter = cityFilter || sectorFilter || effectifFilters.length>0 || capitalFilters.length>0
+
+  const totalPages = Math.ceil(filteredCompanies.length / PER_PAGE)
+  const pagedCompanies = filteredCompanies.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE)
+  const allSelected = selected.size === filteredCompanies.length && filteredCompanies.length > 0
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 className="w-7 h-7 text-indigo-600 animate-spin"/></div>
   if (!data) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">Recherche introuvable</div>
@@ -358,13 +405,96 @@ export default function DatabaseDetailPage() {
           </div>
         </div>
 
+        {/* Filter bar */}
+        {companies.length > 0 && (
+          <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm mb-4">
+            <div className="flex flex-wrap gap-2 items-center">
+              {availableCities.length > 0 && (
+                <select value={cityFilter} onChange={e=>{setCityFilter(e.target.value);setCurrentPage(1)}}
+                  className={`border rounded-xl px-3 py-1.5 text-[12.5px] focus:outline-none bg-white transition-colors ${cityFilter?'border-indigo-300 text-indigo-700 bg-indigo-50':'border-gray-200 text-gray-500'}`}>
+                  <option value="">Toutes les villes</option>
+                  {availableCities.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+              {availableSectors.length > 0 && (
+                <select value={sectorFilter} onChange={e=>{setSectorFilter(e.target.value);setCurrentPage(1)}}
+                  className={`border rounded-xl px-3 py-1.5 text-[12.5px] focus:outline-none bg-white transition-colors max-w-[200px] ${sectorFilter?'border-indigo-300 text-indigo-700 bg-indigo-50':'border-gray-200 text-gray-500'}`}>
+                  <option value="">Tous les secteurs</option>
+                  {availableSectors.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              )}
+              <button onClick={()=>setFiltersOpen(o=>!o)}
+                className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 text-[12.5px] font-medium transition-colors ${(effectifFilters.length>0||capitalFilters.length>0)?'border-indigo-300 text-indigo-700 bg-indigo-50':'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                Effectif / Capital
+                {(effectifFilters.length+capitalFilters.length)>0 && (
+                  <span className="text-[10px] font-bold bg-indigo-600 text-white rounded-full w-4 h-4 flex items-center justify-center">{effectifFilters.length+capitalFilters.length}</span>
+                )}
+              </button>
+              {hasActiveFilter && (
+                <button onClick={()=>{setCityFilter('');setSectorFilter('');setEffectifFilters([]);setCapitalFilters([]);setCurrentPage(1)}}
+                  className="text-[12px] text-gray-400 hover:text-gray-700 px-2 py-1.5">
+                  Réinitialiser
+                </button>
+              )}
+              {hasActiveFilter && (
+                <span className="text-[11.5px] text-indigo-600 font-medium ml-auto">
+                  {filteredCompanies.length} / {companies.length} entreprises
+                </span>
+              )}
+            </div>
+
+            {filtersOpen && (
+              <div className="grid sm:grid-cols-2 gap-4 pt-3 mt-3 border-t border-gray-100">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11.5px] font-semibold text-gray-500">Effectif (salariés)</span>
+                    {effectifFilters.length>0 && (
+                      <button onClick={()=>{setEffectifFilters([]);setCurrentPage(1)}} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">Effacer</button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                    {EFFECTIF_TRANCHES.map(t=>{
+                      const checked = effectifFilters.includes(t.value)
+                      return (
+                        <button key={t.value} onClick={()=>{setEffectifFilters(p=>checked?p.filter(v=>v!==t.value):[...p,t.value]);setCurrentPage(1)}}
+                          className={`text-[11.5px] px-2.5 py-1 rounded-full border transition-colors ${checked?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                          {t.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11.5px] font-semibold text-gray-500">Tranche de capital</span>
+                    {capitalFilters.length>0 && (
+                      <button onClick={()=>{setCapitalFilters([]);setCurrentPage(1)}} className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">Effacer</button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                    {CAPITAL_TRANCHES.map(t=>{
+                      const checked = capitalFilters.includes(t.val)
+                      return (
+                        <button key={t.val} onClick={()=>{setCapitalFilters(p=>checked?p.filter(v=>v!==t.val):[...p,t.val]);setCurrentPage(1)}}
+                          className={`text-[11.5px] px-2.5 py-1 rounded-full border transition-colors ${checked?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                          {t.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Toolbar: bulk select + inject */}
         {companies.length > 0 && (
           <div className="flex items-center gap-3 mb-4 bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm flex-wrap">
             <button
               onClick={() => {
                 if (allSelected) setSelected(new Set())
-                else setSelected(new Set(companies.map(c=>c.id)))
+                else setSelected(new Set(filteredCompanies.map(c=>c.id)))
               }}
               className="flex items-center gap-2 text-[13px] font-medium text-gray-600 hover:text-gray-900"
             >
@@ -386,14 +516,14 @@ export default function DatabaseDetailPage() {
                 </button>
               </>
             )}
-            <span className="ml-auto text-[12px] text-gray-400">{companies.length.toLocaleString('fr-FR')} entreprises</span>
+            <span className="ml-auto text-[12px] text-gray-400">{filteredCompanies.length.toLocaleString('fr-FR')} entreprises</span>
           </div>
         )}
 
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between mb-4 text-[12.5px] text-gray-400">
-            <span>{companies.length.toLocaleString('fr-FR')} entreprises · page {currentPage}/{totalPages}</span>
+            <span>{filteredCompanies.length.toLocaleString('fr-FR')} entreprises · page {currentPage}/{totalPages}</span>
             <div className="flex gap-1">
               <button onClick={()=>setCurrentPage(1)} disabled={currentPage===1} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-30">«</button>
               <button onClick={()=>setCurrentPage(p=>Math.max(1,p-1))} disabled={currentPage===1} className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-30">‹</button>
@@ -409,6 +539,12 @@ export default function DatabaseDetailPage() {
           <div className="text-center py-12 text-gray-400">
             <p className="mb-3">Aucune entreprise dans cette recherche.</p>
             <Link href="/search" className="text-indigo-600 font-semibold hover:underline">Nouvelle recherche</Link>
+          </div>
+        ) : filteredCompanies.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 bg-white border border-gray-100 rounded-2xl">
+            <p className="mb-3">Aucune entreprise ne correspond aux filtres sélectionnés.</p>
+            <button onClick={()=>{setCityFilter('');setSectorFilter('');setEffectifFilters([]);setCapitalFilters([]);setCurrentPage(1)}}
+              className="text-indigo-600 font-semibold hover:underline">Réinitialiser les filtres</button>
           </div>
         ) : (
           <div className="space-y-3">
