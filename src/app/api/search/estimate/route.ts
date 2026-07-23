@@ -12,28 +12,6 @@ function parseCapital(val: unknown): number {
   return isNaN(n) ? NaN : n
 }
 
-// Apply shared filters to any query builder
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyFilters(q: any, { sectors, domaines, activites, cities, name, effectif, effectifs }: {
-  sectors: string[]; domaines: string[]; activites: string[]
-  cities: string[]; name: string; effectif?: string; effectifs?: string[]
-}) {
-  if (sectors.length || domaines.length || activites.length) {
-    const parts: string[] = []
-    if (sectors.length)   parts.push(`primary_sector.in.(${sectors.map((s:string)=>`"${s}"`).join(',')})`)
-    if (domaines.length)  parts.push(`primary_domaine.in.(${domaines.map((s:string)=>`"${s}"`).join(',')})`)
-    if (activites.length) parts.push(`primary_activite.in.(${activites.map((s:string)=>`"${s}"`).join(',')})`)
-    q = q.or(parts.join(','))
-  }
-  if (cities.length)  q = q.in('city', cities)
-  if (name.trim())    q = q.ilike('name', `%${name.trim()}%`)
-  // Multi-select effectif: use .in() for array, .eq() for single
-  const allEffectifs = effectifs && effectifs.length > 0 ? effectifs : (effectif ? [effectif] : [])
-  if (allEffectifs.length === 1) q = q.eq('effectif', allEffectifs[0])
-  if (allEffectifs.length > 1)  q = q.in('effectif', allEffectifs)
-  return q
-}
-
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -49,21 +27,32 @@ export async function POST(request: NextRequest) {
     } = await request.json()
 
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
-    const dataColumns = 'id,' + Object.values(FIELD_GROUPS).flatMap(f => f.columns).join(',') + ',effectif'
-    const filterArgs = { sectors, domaines, activites, cities, name, effectif, effectifs }
+    const allEffectifs: string[] = effectifs?.length > 0 ? effectifs : (effectif ? [effectif] : [])
 
-    // ── 1. Exact DB count (effectif is exact-match → perfectly accurate) ──
-    // Capital is still filtered in-memory (TEXT numeric) → apply ratio after
-    const { count: exactCount } = await applyFilters(
-      supabaseAdmin.from('companies').select('*', { count: 'exact', head: true }),
-      filterArgs
-    )
+    // ── RPC-based filtering — arrays travel in the POST body, not the
+    // URL, so there's no practical limit on how many sectors/domaines/
+    // activités/cities can be selected at once (previously a giant
+    // .or()/.in() filter string built the whole thing into the URL query
+    // string, which silently broke and returned 0 rows past a certain
+    // size — see fix_search_url_limit_and_uncategorized.sql for details).
+    const rpcArgs = {
+      p_sectors:   sectors,
+      p_domaines:  domaines,
+      p_activites: activites,
+      p_cities:    cities,
+      p_name:      name,
+      p_effectifs: allEffectifs,
+    }
+
+    // ── 1. Exact DB count ──
+    const { data: exactCount, error: countErr } = await supabaseAdmin.rpc('count_companies_matching', rpcArgs)
+    if (countErr) throw countErr
 
     // ── 2. Sample 500 rows for field-coverage estimation + capital ratio ──
-    const { data: rawSample } = await applyFilters(
-      supabaseAdmin.from('companies').select(dataColumns),
-      filterArgs
-    ).limit(500)
+    const { data: rawSample, error: sampleErr } = await supabaseAdmin.rpc('fetch_companies_matching', {
+      ...rpcArgs, p_limit: 500, p_offset: 0,
+    })
+    if (sampleErr) throw sampleErr
 
     const rawSampleData = (rawSample ?? []) as Record<string, unknown>[]
     let sampleData = rawSampleData
@@ -83,8 +72,8 @@ export async function POST(request: NextRequest) {
       capitalRatio = rawSampleData.length > 0 ? sampleData.length / rawSampleData.length : 0
     }
 
-    // ── 4. Final count — effectif already exact, apply capital ratio on top ──
-    const dbCount    = exactCount ?? rawSampleData.length
+    // ── 4. Final count — apply capital ratio on top of exact DB count ──
+    const dbCount    = Number(exactCount ?? rawSampleData.length)
     const totalCount = Math.round(dbCount * capitalRatio)
     const actualLimit = Math.min(limit, totalCount, 10000)
 
