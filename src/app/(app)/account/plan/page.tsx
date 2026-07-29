@@ -296,7 +296,7 @@ export default function PlanPage() {
                 </div>
 
                 <p className="text-[12px] text-ink-4 bg-amber-50 border border-amber-100 rounded-[10px] p-3 mb-5">
-                  📧 Une facture sera envoyée à votre adresse email. Paiement par virement bancaire ou chèque à l&apos;ordre de LeadScout.
+                  📧 Une facture sera envoyée à votre adresse email. Paiement par virement bancaire ou chèque à l&apos;ordre de LeadMaster.
                 </p>
 
                 <div className="flex gap-3">

@@ -128,6 +128,23 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // ── Prevent any GET API response from being cached by the browser,
+  // Vercel's edge network, or any proxy in between ─────────────────
+  // This was a real, confirmed bug: /api/nomenclature (and by the same
+  // pattern, potentially any other shared/aggregate GET endpoint) could
+  // get cached upstream of the app with no explicit opt-out, meaning a
+  // browser "hard refresh" did nothing — it only clears the browser's own
+  // cache, never an edge/CDN cache. After a bulk data change (like the
+  // company reclassification), stale numbers kept showing for far longer
+  // than any in-memory server-side cache TTL could explain. Setting this
+  // centrally in middleware closes the gap for every current API route
+  // and any added in the future, instead of requiring each route file to
+  // remember to set it individually.
+  if (pathname.startsWith('/api/')) {
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+    response.headers.set('Pragma', 'no-cache')
+  }
+
   return response
 }
 

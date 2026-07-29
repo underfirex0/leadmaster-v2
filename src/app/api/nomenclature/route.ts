@@ -147,7 +147,19 @@ export async function GET(request: NextRequest) {
       cacheTs = now
     }
 
-    return NextResponse.json(tree)
+    // Explicit no-cache headers — WITHOUT these, Vercel's edge network can
+    // cache this GET response on its own terms, completely independent of
+    // (and potentially far longer-lived than) the in-memory cache above.
+    // Critically: a browser "hard refresh" does NOT bypass this — it only
+    // clears the browser's own cache, not an upstream edge/CDN cache. This
+    // was the real reason stale counts kept showing long after a bulk data
+    // reclassification, even after repeated hard refreshes.
+    return NextResponse.json(tree, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+      },
+    })
   } catch (e) {
     console.error('Nomenclature error:', e)
     return NextResponse.json({ error: 'Erreur nomenclature' }, { status: 500 })

@@ -277,7 +277,7 @@ export default function SearchPage() {
         const params = new URLSearchParams()
         if (cities.length)        params.set('cities', cities.join(','))
         if (nameSearch.trim())    params.set('name',   nameSearch.trim())
-        const r = await fetch(`/api/nomenclature?${params}`)
+        const r = await fetch(`/api/nomenclature?${params}`, { cache: 'no-store' })
         const d = await r.json()
         setTree(d)
       } catch { /* silent */ }
