@@ -10,7 +10,9 @@ import type { NomenclatureSector, NomenclatureDomaine, NomenclatureActivite } fr
 // instead of being invisible for up to 30 minutes.
 let cache: NomenclatureSector[] | null = null
 let cacheTs = 0
-const CACHE_TTL = 1000 * 60 // 1 min
+const CACHE_TTL = 1000 * 15 // 15 sec — short enough that a data fix (like a bulk
+                             // reclassification) is reflected almost immediately,
+                             // long enough to avoid hammering the DB on rapid page loads
 
 // ── Build tree from raw rows ──────────────────────────────────
 type RawRow = { sector: string; domaine: string; activite: string; count: number }
