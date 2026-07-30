@@ -48,21 +48,67 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 // ── Full taxonomy tree, with LIVE counts from company_taxonomy ──
-// One straightforward query. No RPC, no manual cache — Postgres itself
-// is fast enough here (1,206 taxonomy rows, indexed join).
-export async function getTaxonomyTree(): Promise<TaxonomyTree[]> {
-  const { data, error } = await supabaseAdmin
-    .from('company_taxonomy')
-    .select('taxonomy_id, taxonomy:taxonomy_id(id, sector, domaine, activite)')
-    .eq('is_primary', true) // tree counts reflect each company's MAIN category only
-
-  if (error) throw error
+// Optionally scoped to a set of cities, so Step 2 of the wizard reflects
+// "how many in this sector, given the city already chosen in Step 1" —
+// not a disconnected global number.
+export async function getTaxonomyTree(cities?: string[]): Promise<TaxonomyTree[]> {
+  // If a city filter is active, first resolve which companies match it —
+  // then only count taxonomy links for those companies.
+  let restrictToCompanyIds: Set<string> | null = null
+  if (cities?.length) {
+    restrictToCompanyIds = new Set<string>()
+    let from = 0
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data, error } = await supabaseAdmin
+        .from('companies_v2').select('id').in('city', cities).range(from, from + 999)
+      if (error) throw error
+      if (!data?.length) break
+      data.forEach(r => restrictToCompanyIds!.add(r.id as string))
+      if (data.length < 1000) break
+      from += 1000
+    }
+    if (restrictToCompanyIds.size === 0) return [] // no companies in these cities at all
+  }
 
   const counts = new Map<number, number>()
   const meta = new Map<number, TaxonomyNode>()
-  for (const row of (data ?? []) as unknown as { taxonomy_id: number; taxonomy: TaxonomyNode }[]) {
-    counts.set(row.taxonomy_id, (counts.get(row.taxonomy_id) ?? 0) + 1)
-    if (row.taxonomy) meta.set(row.taxonomy_id, row.taxonomy)
+
+  async function countBatch(companyIdBatch?: string[]) {
+    let from = 0
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      let q = supabaseAdmin
+        .from('company_taxonomy')
+        .select('taxonomy_id, taxonomy:taxonomy_id(id, sector, domaine, activite)')
+        .eq('is_primary', true)
+      if (companyIdBatch) q = q.in('company_id', companyIdBatch)
+      const { data, error } = await q.range(from, from + 999)
+      if (error) throw error
+      if (!data?.length) break
+      for (const row of data as unknown as { taxonomy_id: number; taxonomy: TaxonomyNode }[]) {
+        counts.set(row.taxonomy_id, (counts.get(row.taxonomy_id) ?? 0) + 1)
+        if (row.taxonomy) meta.set(row.taxonomy_id, row.taxonomy)
+      }
+      if (data.length < 1000) break
+      from += 1000
+    }
+  }
+
+  if (restrictToCompanyIds) {
+    // company_taxonomy.company_id has no useful upper bound on how many ids
+    // we might need to filter by, so chunk the id list the same way the
+    // rest of this module does for consistency and safety.
+    const idArr = Array.from(restrictToCompanyIds)
+    for (const batch of chunk(idArr, ID_BATCH_SIZE)) {
+      await countBatch(batch)
+    }
+  } else {
+    // IMPORTANT: this branch MUST paginate — company_taxonomy has 60,000+
+    // rows, and Supabase caps a single unpaginated request at 1,000. Without
+    // this loop, every sector count silently reflected only an arbitrary
+    // first slice of the table instead of the true total.
+    await countBatch()
   }
 
   const sectorMap = new Map<string, Map<string, { id: number; activite: string; count: number }[]>>()

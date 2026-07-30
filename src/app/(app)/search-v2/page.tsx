@@ -87,11 +87,17 @@ export default function SearchWizardPage() {
     (capitalTranches.some(v => CAPITAL_TRANCHES.find(t => t.value === v)!.max === null) ? undefined :
       Math.max(...capitalTranches.map(v => CAPITAL_TRANCHES.find(t => t.value === v)!.max as number)))
 
-  // ── Load taxonomy tree + cities once ─────────────────────
+  // ── Load cities once; reload taxonomy tree whenever selected cities
+  // change, so Step 2's counts reflect Step 1's choice ──
   useEffect(() => {
-    fetch('/api/v2/taxonomy').then(r => r.json()).then(d => { setTree(d); setTreeLoading(false) })
     fetch('/api/v2/cities').then(r => r.json()).then(setAvailableCities)
   }, [])
+
+  useEffect(() => {
+    setTreeLoading(true)
+    const params = cities.length ? `?cities=${cities.map(encodeURIComponent).join(',')}` : ''
+    fetch(`/api/v2/taxonomy${params}`).then(r => r.json()).then(d => { setTree(d); setTreeLoading(false) })
+  }, [cities])
 
   // ── Live estimate — refires on every filter change, debounced ──
   const runEstimate = useCallback(() => {

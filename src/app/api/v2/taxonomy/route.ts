@@ -1,10 +1,14 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getTaxonomyTree } from '@/lib/companiesV2'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const tree = await getTaxonomyTree()
+    const { searchParams } = new URL(request.url)
+    const citiesParam = searchParams.get('cities') ?? ''
+    const cities = citiesParam ? citiesParam.split(',').filter(Boolean) : undefined
+
+    const tree = await getTaxonomyTree(cities)
     return NextResponse.json(tree, {
       headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' },
     })
