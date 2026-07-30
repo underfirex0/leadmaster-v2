@@ -190,16 +190,23 @@ export async function fetchMatchingCompanies(
 
 // ── Get every distinct city that has at least one company (for the picker) ──
 export async function getAvailableCities(): Promise<{ city: string; count: number }[]> {
-  const { data, error } = await supabaseAdmin
-    .from('companies_v2')
-    .select('city')
-    .not('city', 'is', null)
-
-  if (error) throw error
   const counts = new Map<string, number>()
-  for (const row of (data ?? [])) {
-    const c = (row as { city: string }).city
-    counts.set(c, (counts.get(c) ?? 0) + 1)
+  let from = 0
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from('companies_v2')
+      .select('city')
+      .not('city', 'is', null)
+      .range(from, from + 999)
+    if (error) throw error
+    if (!data?.length) break
+    for (const row of data) {
+      const c = (row as { city: string }).city
+      counts.set(c, (counts.get(c) ?? 0) + 1)
+    }
+    if (data.length < 1000) break
+    from += 1000
   }
   return Array.from(counts.entries())
     .map(([city, count]) => ({ city, count }))

@@ -6,8 +6,9 @@ import { fetchMatchingCompanies, type CompanyFiltersV2 } from '@/lib/companiesV2
 import { FIELD_GROUPS, type FieldGroupId } from '@/lib/constants'
 
 const COLUMN_OVERRIDES: Record<string, string[]> = {
-  effectif: ['effectif_tranche'],
-  capital:  ['capital_mad'],
+  basic:     ['name', 'city', 'forme_juridique'],
+  effectif:  ['effectif_tranche'],
+  capital:   ['capital_mad'],
 }
 function columnsFor(field: FieldGroupId): string[] {
   return COLUMN_OVERRIDES[field] ?? FIELD_GROUPS[field].columns as unknown as string[]

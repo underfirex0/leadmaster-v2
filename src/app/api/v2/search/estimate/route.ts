@@ -5,10 +5,15 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { countMatchingCompanies, fetchMatchingCompanies, type CompanyFiltersV2 } from '@/lib/companiesV2'
 import { FIELD_GROUPS, type FieldGroupId } from '@/lib/constants'
 
-// Column-name overrides for the two fields renamed in the v2 schema
+// Column-name overrides for fields whose v2 schema differs from the
+// original FIELD_GROUPS definition (renamed columns, or columns that
+// don't exist at all on companies_v2 — sector/activité now live via the
+// primary_taxonomy_id join instead of duplicated text columns, and the
+// social-media columns were dropped as they were 99.8%+ empty).
 const COLUMN_OVERRIDES: Record<string, string[]> = {
-  effectif: ['effectif_tranche'],
-  capital:  ['capital_mad'],
+  basic:     ['name', 'city', 'forme_juridique'],
+  effectif:  ['effectif_tranche'],
+  capital:   ['capital_mad'],
 }
 function columnsFor(field: FieldGroupId): string[] {
   return COLUMN_OVERRIDES[field] ?? FIELD_GROUPS[field].columns as unknown as string[]
