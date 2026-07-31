@@ -6,7 +6,11 @@ import { cn } from '@/lib/utils'
 
 type Query = {
   id: string
-  filters: { sectors?: string[]; domaines?: string[]; activites?: string[]; cities?: string[]; name?: string }
+  filters: {
+    sectors?: string[]; domaines?: string[]; activites?: string[]; cities?: string[]; name?: string
+    // v2 wizard shape
+    taxonomyIds?: number[]; effectifTranches?: string[]; capitalMin?: number; capitalMax?: number
+  }
   fields_requested: string[]
   result_count: number
   credits_spent: number
@@ -57,9 +61,15 @@ export default function DatabasesPage() {
   function describeFilters(q: Query) {
     const f = q.filters
     const parts: string[] = []
+    // Old shape (search page pre-rebuild)
     if (f.sectors?.length)   parts.push(...f.sectors.slice(0, 2))
     if (f.domaines?.length)  parts.push(...f.domaines.slice(0, 2))
     if (f.activites?.length) parts.push(`${f.activites.length} activité${f.activites.length > 1 ? 's' : ''}`)
+    // v2 wizard shape
+    if (f.taxonomyIds?.length) parts.push(`${f.taxonomyIds.length} activité${f.taxonomyIds.length > 1 ? 's' : ''}`)
+    if (f.effectifTranches?.length) parts.push(`${f.effectifTranches.length} tranche${f.effectifTranches.length > 1 ? 's' : ''} d'effectif`)
+    if (f.capitalMin != null || f.capitalMax != null) parts.push('Capital filtré')
+    // Shared
     if (f.cities?.length)    parts.push(...f.cities)
     if (f.name)              parts.push(`"${f.name}"`)
     return parts.length ? parts : ['Toutes les entreprises']
@@ -184,6 +194,9 @@ export default function DatabasesPage() {
               <div key={q.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex-1 min-w-0">
+                    <h3 className="text-[15px] font-bold text-gray-900 mb-1.5 truncate">
+                      {q.query_name?.trim() || `Recherche du ${fmt(q.created_at).split(' à')[0]}`}
+                    </h3>
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="flex items-center gap-1.5 text-[12px] text-gray-400">
                         <Clock className="w-3.5 h-3.5" />{fmt(q.created_at)}

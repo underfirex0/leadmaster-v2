@@ -94,17 +94,35 @@ export async function GET(req: NextRequest, { params }: P) {
 
     if (!companyIds.length) return NextResponse.json({ query, companies: [], fields })
 
-    // ── Fetch companies in chunks of 500 ──────────────────────
+    // ── Fetch companies in chunks of 500 — from companies_v2 (the clean,
+    // rebuilt table), joined to taxonomy to reconstruct the sector/domaine/
+    // activité text fields the results UI already expects, and mapping
+    // renamed columns (capital_mad, effectif_tranche) back to the field
+    // names the frontend already renders (capital, effectif). This is what
+    // makes a search launched from the new wizard actually show the
+    // cleaned v2 data instead of stale data from the old companies table. ──
     const allCompanies: Record<string, unknown>[] = []
     for (let i = 0; i < companyIds.length; i += BATCH) {
-      const chunk = companyIds.slice(i, i + BATCH)
+      const idBatch = companyIds.slice(i, i + BATCH)
       const { data, error } = await supabaseAdmin
-        .from('companies')
-        .select('id,name,city,annee_creation,primary_sector,primary_domaine,primary_activite,activities,forme_juridique,phone_1,phone_2,email,website,director,ice,rc,effectif,capital,address_raw,latitude,longitude,facebook,instagram,linkedin,youtube,logo_url,description,rating')
-        .in('id', chunk)
+        .from('companies_v2')
+        .select('id,name,city,annee_creation,forme_juridique,phone_1,phone_2,email,website,' +
+          'director,ice,rc,effectif_tranche,capital_mad,address_raw,latitude,longitude,description,' +
+          'taxonomy:primary_taxonomy_id(sector,domaine,activite)')
+        .in('id', idBatch)
         .limit(BATCH)
       if (error) { console.error('Companies fetch error:', error); continue }
-      allCompanies.push(...(data ?? []))
+      for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+        const tax = row.taxonomy as { sector?: string; domaine?: string; activite?: string } | null
+        allCompanies.push({
+          ...row,
+          primary_sector:   tax?.sector   ?? null,
+          primary_domaine:  tax?.domaine  ?? null,
+          primary_activite: tax?.activite ?? null,
+          effectif: row.effectif_tranche ?? null,
+          capital:  row.capital_mad != null ? String(row.capital_mad) : null,
+        })
+      }
     }
 
     // ── Enrich with unlocked_fields ───────────────────────────
