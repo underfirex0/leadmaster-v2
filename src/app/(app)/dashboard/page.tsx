@@ -19,7 +19,7 @@ async function getStats(userId: string) {
   ] = await Promise.all([
     supabaseAdmin.from('company_unlocks').select('*', { count: 'exact', head: true }).eq('user_id', userId),
     supabaseAdmin.from('crm_leads').select('*', { count: 'exact', head: true }).eq('user_id', userId),
-    supabaseAdmin.from('companies').select('*', { count: 'exact', head: true }),
+    supabaseAdmin.from('companies_v2').select('*', { count: 'exact', head: true }),
     supabaseAdmin
       .from('company_unlocks')
       .select('company_id, unlocked_at')
@@ -34,7 +34,7 @@ async function getStats(userId: string) {
   if (recentUnlocks?.length) {
     const ids = recentUnlocks.map(u => u.company_id)
     const { data } = await supabaseAdmin
-      .from('companies').select('id, name, city').in('id', ids)
+      .from('companies_v2').select('id, name, city').in('id', ids)
     const map: Record<string, { name: string; city: string | null }> = {}
     for (const c of data ?? []) map[c.id] = c
     recentCompanies = ids.map(id => map[id] ?? { name: '—', city: null })
