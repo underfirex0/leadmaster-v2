@@ -22,7 +22,7 @@ const PLAN_BADGES: Record<string, { label: string; color: string }> = {
 const NAV = [
   { href: '/dashboard', label: 'Dashboard',    icon: LayoutDashboard },
   { href: '/search',    label: 'Recherche',    icon: Search },
-  { href: '/databases', label: 'Recherches',   icon: Database },
+  { href: '/databases', label: 'Mes sélections', icon: Database },
   { href: '/crm',       label: 'CRM',          icon: Users2 },
   { href: '/upload',    label: 'Import',        icon: Upload },
 ]

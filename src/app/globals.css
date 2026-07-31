@@ -497,3 +497,7 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in, .animate-slide-in-left { animation: none; }
 }
+
+/* Hide scrollbar for the mobile step indicator strip, keep it scrollable */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

@@ -36,79 +36,31 @@ export interface CompanyFiltersV2 {
   capitalMax?: number
 }
 
-// Batch size for .in() calls — integers are compact, so this is a much
-// larger safety margin than the old text-based filtering ever needed,
-// but kept anyway so there is never again a "how many is too many" question.
-const ID_BATCH_SIZE = 500
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = []
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
-  return out
-}
-
 // ── Full taxonomy tree, with LIVE counts from company_taxonomy ──
 // Optionally scoped to a set of cities, so Step 2 of the wizard reflects
 // "how many in this sector, given the city already chosen in Step 1" —
 // not a disconnected global number.
 export async function getTaxonomyTree(cities?: string[]): Promise<TaxonomyTree[]> {
-  // If a city filter is active, first resolve which companies match it —
-  // then only count taxonomy links for those companies.
-  let restrictToCompanyIds: Set<string> | null = null
-  if (cities?.length) {
-    restrictToCompanyIds = new Set<string>()
-    let from = 0
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { data, error } = await supabaseAdmin
-        .from('companies_v2').select('id').in('city', cities).range(from, from + 999)
-      if (error) throw error
-      if (!data?.length) break
-      data.forEach(r => restrictToCompanyIds!.add(r.id as string))
-      if (data.length < 1000) break
-      from += 1000
-    }
-    if (restrictToCompanyIds.size === 0) return [] // no companies in these cities at all
-  }
-
   const counts = new Map<number, number>()
   const meta = new Map<number, TaxonomyNode>()
 
-  async function countBatch(companyIdBatch?: string[]) {
-    let from = 0
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      let q = supabaseAdmin
-        .from('company_taxonomy')
-        .select('taxonomy_id, taxonomy:taxonomy_id(id, sector, domaine, activite)')
-        .eq('is_primary', true)
-      if (companyIdBatch) q = q.in('company_id', companyIdBatch)
-      const { data, error } = await q.range(from, from + 999)
-      if (error) throw error
-      if (!data?.length) break
-      for (const row of data as unknown as { taxonomy_id: number; taxonomy: TaxonomyNode }[]) {
-        counts.set(row.taxonomy_id, (counts.get(row.taxonomy_id) ?? 0) + 1)
-        if (row.taxonomy) meta.set(row.taxonomy_id, row.taxonomy)
-      }
-      if (data.length < 1000) break
-      from += 1000
+  let from = 0
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let q = supabaseAdmin
+      .from('company_taxonomy')
+      .select('taxonomy_id, taxonomy:taxonomy_id(id, sector, domaine, activite), companies_v2!inner(city)')
+      .eq('is_primary', true)
+    if (cities?.length) q = q.in('companies_v2.city', cities)
+    const { data, error } = await q.range(from, from + 999)
+    if (error) throw error
+    if (!data?.length) break
+    for (const row of data as unknown as { taxonomy_id: number; taxonomy: TaxonomyNode }[]) {
+      counts.set(row.taxonomy_id, (counts.get(row.taxonomy_id) ?? 0) + 1)
+      if (row.taxonomy) meta.set(row.taxonomy_id, row.taxonomy)
     }
-  }
-
-  if (restrictToCompanyIds) {
-    // company_taxonomy.company_id has no useful upper bound on how many ids
-    // we might need to filter by, so chunk the id list the same way the
-    // rest of this module does for consistency and safety.
-    const idArr = Array.from(restrictToCompanyIds)
-    for (const batch of chunk(idArr, ID_BATCH_SIZE)) {
-      await countBatch(batch)
-    }
-  } else {
-    // IMPORTANT: this branch MUST paginate — company_taxonomy has 60,000+
-    // rows, and Supabase caps a single unpaginated request at 1,000. Without
-    // this loop, every sector count silently reflected only an arbitrary
-    // first slice of the table instead of the true total.
-    await countBatch()
+    if (data.length < 1000) break
+    from += 1000
   }
 
   const sectorMap = new Map<string, Map<string, { id: number; activite: string; count: number }[]>>()
@@ -136,6 +88,12 @@ export async function getTaxonomyTree(cities?: string[]): Promise<TaxonomyTree[]
 }
 
 // ── Apply the small, safe filters (city/name/effectif/capital) ──
+// Works on BOTH a plain companies_v2 query and one going through the
+// company_taxonomy join — Supabase lets you filter an embedded/joined
+// table's columns via 'company_taxonomy.companies_v2.<col>' dot-path,
+// but since we always select FROM companies_v2 (optionally inner-joined
+// to company_taxonomy for the taxonomy filter), plain column names work
+// in both cases.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyBaseFilters(q: any, f: CompanyFiltersV2) {
   if (f.cities?.length) q = q.in('city', f.cities)
@@ -147,51 +105,30 @@ function applyBaseFilters(q: any, f: CompanyFiltersV2) {
   return q
 }
 
-// ── Resolve which company ids match the taxonomy selection ──
-// Returns null if no taxonomy filter is active (meaning: don't restrict by taxonomy at all).
-async function resolveTaxonomyCompanyIds(taxonomyIds?: number[]): Promise<Set<string> | null> {
-  if (!taxonomyIds?.length) return null
-  const ids = new Set<string>()
-  for (const batch of chunk(taxonomyIds, ID_BATCH_SIZE)) {
-    let from = 0
-    while (true) {
-      const { data, error } = await supabaseAdmin
-        .from('company_taxonomy')
-        .select('company_id')
-        .in('taxonomy_id', batch)
-        .range(from, from + 999)
-      if (error) throw error
-      if (!data?.length) break
-      data.forEach(r => ids.add(r.company_id as string))
-      if (data.length < 1000) break
-      from += 1000
-    }
-  }
-  return ids
-}
-
 // ── Exact count of companies matching the given filters ──
+// FAST PATH: a single JOIN+COUNT query, no multi-step id resolution.
+//
+// This intentionally matches only each company's PRIMARY taxonomy link
+// (is_primary = true), which is guaranteed exactly one row per company —
+// that's what makes a single query safe here with zero risk of a company
+// being counted twice. The ~140 secondary-activity links (companies with
+// more than one real business activity) are not yet matched by search;
+// that needs proper fuzzy-text matching against the raw scraped activity
+// labels (see ARCHITECTURE_REBUILD_PLAN.md) and is intentionally deferred
+// rather than risking duplicate-counting bugs to include it now.
 export async function countMatchingCompanies(f: CompanyFiltersV2): Promise<number> {
-  const taxIds = await resolveTaxonomyCompanyIds(f.taxonomyIds)
-
-  if (taxIds && taxIds.size === 0) return 0 // taxonomy filter active but matched nothing
-
-  if (taxIds) {
-    // Company id set can be large — count via chunked .in() on id, summed.
-    // Every id is unique so summing chunk counts is always safe here.
-    const idArr = Array.from(taxIds)
-    let total = 0
-    for (const batch of chunk(idArr, ID_BATCH_SIZE)) {
-      let q = supabaseAdmin.from('companies_v2').select('*', { count: 'exact', head: true }).in('id', batch)
-      q = applyBaseFilters(q, f)
-      const { count, error } = await q
-      if (error) throw error
-      total += count ?? 0
-    }
-    return total
+  if (f.taxonomyIds?.length) {
+    let q = supabaseAdmin
+      .from('companies_v2')
+      .select('id, company_taxonomy!inner(taxonomy_id)', { count: 'exact', head: true })
+      .eq('company_taxonomy.is_primary', true)
+      .in('company_taxonomy.taxonomy_id', f.taxonomyIds)
+    q = applyBaseFilters(q, f)
+    const { count, error } = await q
+    if (error) throw error
+    return count ?? 0
   }
 
-  // No taxonomy filter — single query
   let q = supabaseAdmin.from('companies_v2').select('*', { count: 'exact', head: true })
   q = applyBaseFilters(q, f)
   const { count, error } = await q
@@ -200,31 +137,31 @@ export async function countMatchingCompanies(f: CompanyFiltersV2): Promise<numbe
 }
 
 // ── Fetch up to `limit` full company rows matching the filters ──
+// Same single-query JOIN approach — no more paginated id-resolution pass.
 export async function fetchMatchingCompanies(
   f: CompanyFiltersV2,
   columns: string,
   limit: number,
   offset = 0
 ): Promise<Record<string, unknown>[]> {
-  const taxIds = await resolveTaxonomyCompanyIds(f.taxonomyIds)
-  if (taxIds && taxIds.size === 0) return []
-
-  if (taxIds) {
-    // Fetch across id-batches, dedupe (ids are already unique so no real
-    // dedup needed, just merge), then apply limit/offset in-memory since
-    // the underlying set doesn't have a single stable server-side order
-    // across multiple .in() batches.
-    const idArr = Array.from(taxIds)
-    const all: Record<string, unknown>[] = []
-    for (const batch of chunk(idArr, ID_BATCH_SIZE)) {
-      let q = supabaseAdmin.from('companies_v2').select(columns).in('id', batch).order('id')
-      q = applyBaseFilters(q, f)
-      const { data, error } = await q
-      if (error) throw error
-      all.push(...((data ?? []) as unknown as Record<string, unknown>[]))
-    }
-    all.sort((a, b) => String(a.id).localeCompare(String(b.id)))
-    return all.slice(offset, offset + limit)
+  if (f.taxonomyIds?.length) {
+    let q = supabaseAdmin
+      .from('companies_v2')
+      .select(`${columns}, company_taxonomy!inner(taxonomy_id)`)
+      .eq('company_taxonomy.is_primary', true)
+      .in('company_taxonomy.taxonomy_id', f.taxonomyIds)
+      .order('id')
+      .range(offset, offset + limit - 1)
+    q = applyBaseFilters(q, f)
+    const { data, error } = await q
+    if (error) throw error
+    // Strip the embedded join payload — callers only expect the named
+    // companies_v2 columns they asked for.
+    return (data ?? []).map((row: Record<string, unknown>) => {
+      const { company_taxonomy, ...rest } = row
+      void company_taxonomy
+      return rest
+    })
   }
 
   let q = supabaseAdmin.from('companies_v2').select(columns).order('id').range(offset, offset + limit - 1)

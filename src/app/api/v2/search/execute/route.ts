@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     const {
       taxonomyIds = [], cities = [], name = '',
       effectifTranches = [], capitalMin, capitalMax,
-      fields = [], limit = 50,
+      fields = [], limit = 50, queryName,
     } = body
 
     const allFields: FieldGroupId[] = [...new Set(['basic', ...fields])] as FieldGroupId[]
@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     const { data: queryRecord, error: qErr } = await supabaseAdmin
       .from('queries').insert({
         user_id: user.id,
+        query_name: queryName?.trim() || null,
         filters: { taxonomyIds, cities, name, effectifTranches, capitalMin, capitalMax },
         fields_requested: allFields,
         result_count: selected.length,

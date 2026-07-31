@@ -93,7 +93,7 @@ export default function DatabasesPage() {
       <div className="max-w-[960px] mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-7 flex-wrap gap-4">
           <div>
-            <h1 className="text-[26px] font-bold text-gray-900 tracking-tight">Mes recherches</h1>
+            <h1 className="text-[26px] font-bold text-gray-900 tracking-tight">Mes sélections</h1>
             <p className="text-gray-500 text-[14px] mt-1">Retrouvez, re-visualisez et exportez toutes vos recherches passées.</p>
           </div>
           <Link href="/search" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-semibold text-[13.5px] hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100">
@@ -131,7 +131,7 @@ export default function DatabasesPage() {
           <div className="bg-white rounded-2xl border border-gray-100 p-14 text-center">
             <Database className="w-12 h-12 text-gray-200 mx-auto mb-4" />
             <h3 className="font-bold text-gray-700 text-[17px] mb-2">Aucune recherche effectuée</h3>
-            <p className="text-gray-400 text-[14px] mb-6">Vos recherches apparaîtront ici avec toutes les données déverrouillées.</p>
+            <p className="text-gray-400 text-[14px] mb-6">Vos sélections apparaîtront ici avec toutes les données déverrouillées.</p>
             <Link href="/search" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold text-[14px] hover:bg-indigo-700">
               Commencer <ArrowRight className="w-4 h-4" />
             </Link>
