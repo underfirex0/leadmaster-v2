@@ -538,7 +538,7 @@ export default function DatabaseDetailPage() {
         {companies.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <p className="mb-3">Aucune entreprise dans cette recherche.</p>
-            <Link href="/search" className="text-indigo-600 font-semibold hover:underline">Nouvelle recherche</Link>
+            <Link href="/search-v2" className="text-indigo-600 font-semibold hover:underline">Nouvelle recherche</Link>
           </div>
         ) : filteredCompanies.length === 0 ? (
           <div className="text-center py-12 text-gray-400 bg-white border border-gray-100 rounded-2xl">

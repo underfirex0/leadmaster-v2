@@ -67,7 +67,7 @@ export default async function DashboardPage() {
 
   const quickActions = [
     {
-      href: '/search',
+      href: '/search-v2',
       icon: Search,
       title: 'Nouvelle recherche',
       desc: 'Filtrez par secteur, ville ou activité',

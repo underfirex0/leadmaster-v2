@@ -319,7 +319,7 @@ function ResultsInner() {
 
         {/* Header */}
         <div className="mb-6">
-          <Link href="/search" className="inline-flex items-center gap-1.5 text-[13px] text-ink-4 hover:text-ink-2 transition-colors mb-4">
+          <Link href="/search-v2" className="inline-flex items-center gap-1.5 text-[13px] text-ink-4 hover:text-ink-2 transition-colors mb-4">
             <ChevronLeft className="w-3.5 h-3.5" /> Retour à la recherche
           </Link>
 
@@ -416,7 +416,7 @@ function ResultsInner() {
             <Search className="w-10 h-10 text-ink-5 mx-auto mb-3" />
             <h3 className="font-semibold text-ink-2 mb-1.5">Aucun résultat</h3>
             <p className="text-ink-4 text-[13.5px] mb-4">Aucune entreprise ne correspond à vos critères.</p>
-            <Link href="/search" className="btn-brand btn-sm inline-flex">
+            <Link href="/search-v2" className="btn-brand btn-sm inline-flex">
               <ChevronLeft className="w-3.5 h-3.5" /> Modifier la recherche
             </Link>
           </div>

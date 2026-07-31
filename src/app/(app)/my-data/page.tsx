@@ -173,7 +173,7 @@ export default function MyDataPage() {
             </h1>
             <p className="text-gray-400 text-[13px] mt-1">{loading?'…':`${totalCount.toLocaleString('fr-FR')} entreprise${totalCount!==1?'s':''} déverrouillée${totalCount!==1?'s':''}`}</p>
           </div>
-          <Link href="/search" className="flex items-center gap-2 text-[13px] font-semibold text-indigo-600 border border-indigo-200 rounded-xl px-3.5 py-2 hover:bg-indigo-50 self-start">
+          <Link href="/search-v2" className="flex items-center gap-2 text-[13px] font-semibold text-indigo-600 border border-indigo-200 rounded-xl px-3.5 py-2 hover:bg-indigo-50 self-start">
             <Search className="w-3.5 h-3.5"/>Nouvelle recherche
           </Link>
         </div>
@@ -183,7 +183,7 @@ export default function MyDataPage() {
             <Database className="w-12 h-12 text-gray-200 mx-auto mb-4"/>
             <h3 className="font-bold text-gray-700 text-[17px] mb-2">Aucune donnée déverrouillée</h3>
             <p className="text-gray-400 text-[13.5px] mb-6 max-w-md mx-auto">Recherchez des entreprises et déverrouillez leurs coordonnées pour les retrouver ici.</p>
-            <Link href="/search" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold text-[14px] hover:bg-indigo-700">
+            <Link href="/search-v2" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold text-[14px] hover:bg-indigo-700">
               Commencer la prospection<ArrowRight className="w-4 h-4"/>
             </Link>
           </div>
